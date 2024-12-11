@@ -275,40 +275,162 @@ export function generateshaderparkcode(shader)  {
       mixGeo(pointerDown);
       sphere(.5 + n1 * .5);
     `
-  } else if (shader == 'generate') {
+  } else if (shader == 'gpt-1') {
     return `
-      let size = input();
-      let pointerDown = input();
+    let size = input();
+    let pointerDown = input();
+    
+    // Randomly choose a shape to render
+    let shapeChoice = Math.random() > 0.5 ? 'sphere' : 'boxFrame'; // Randomly choose between sphere and boxFrame
+    
+    // Random color selection
+    let colorChoice = Math.random();
+    if (colorChoice < 0.3) {
+      color(Math.random() * 0.5, Math.random() * 0.5, Math.random() * 0.5); // Random dark color
+    } else if (colorChoice < 0.6) {
+      color(Math.random() * 0.5 + 0.5, Math.random() * 0.5, 0); // Random warm colors
+    } else {
+      color(Math.random() * 0.5, Math.random() * 0.5 + 0.5, Math.random() * 0.5); // Random cool colors
+    }
 
-      setMaxIterations(500)
+    // Rotate in random directions
+    rotateX(Math.random() * Math.PI * 2);
+    rotateY(Math.random() * Math.PI * 2);
+    rotateZ(Math.random() * Math.PI * 2);
 
-      box(vec3(size))
+    // Dynamic rotation and scaling based on time and size
+    let randomTimeFactor = Math.random() * 0.1 + 0.1;
+    rotateX(mouse.y * 5 * Math.PI / 2 + time * randomTimeFactor);
+    rotateY(mouse.x * -5 * Math.PI / 2 + time * randomTimeFactor);
+
+    // Metal and shine with random factors
+    let randomMetal = Math.random() * 0.5 + 0.3;
+    metal(randomMetal * size);
+    shine(Math.random() * 0.5 + 0.3);
+
+    // Randomly adjust the size
+    size *= Math.random() * 1.5 + 0.5;
+
+    // Box or Sphere with random size adjustments
+    if (shapeChoice === 'sphere') {
+      sphere(size / 2 - pointerDown * 0.3);
+    } else {
+      let boxSize = size - pointerDown * 0.1;
+      boxFrame(vec3(size), boxSize * 0.1);
+    }
+
+    // Apply blending effects with random factors
+    let randomBlend = Math.random() * 0.2 + 0.1;
+    blend(nsin(time * size) * randomBlend);
+
+    // Create an additional shape, randomly chosen between sphere, boxFrame, or grid
+    let extraShape = Math.random();
+    if (extraShape < 0.33) {
+      sphere(size / 3);
+    } else if (extraShape < 0.66) {
+      boxFrame(vec3(size * 0.7), size * 0.05);
+    } else {
+      grid(size / 3, 10, 0.01 * size);
+    }
+
+    // Add some randomness to the blending intensity
+    blend(ncos(time * (size)) * (Math.random() * 0.2 + 0.1));
+    `
+  } else if (shader == 'gpt-3') {
+    return `
+    let size = input();
+    let pointerDown = input();
+    
+     rotateY(mouse.x * -5 * PI / 2 + time -(pointerDown+0.1))
+      rotateX(mouse.y * 5 * PI / 2 + time)
+
+    // Randomly choose a shape to render
+    let shapeChoice = Math.random() > 0.5 ? 'sphere' : 'boxFrame'; // Randomly choose between sphere and boxFrame
+    
+    // Random color selection
+    let colorChoice = Math.random();
+    if (colorChoice < 0.3) {
+      color(Math.random() * 0.5, Math.random() * 0.5, Math.random() * 0.5); // Random dark color
+    } else if (colorChoice < 0.6) {
+      color(Math.random() * 0.5 + 0.5, Math.random() * 0.5, 0); // Random warm colors
+    } else {
+      color(Math.random() * 0.5, Math.random() * 0.5 + 0.5, Math.random() * 0.5); // Random cool colors
+    }
+
+    // Randomize rotation using getRayDirection and time
+    let randomRotateFactor = Math.random() * 2 + 1; // Random factor for more variation in rotations
+    rotateX(getRayDirection().y * randomRotateFactor + time);
+    rotateY(getRayDirection().x * randomRotateFactor + time);
+    rotateZ(getRayDirection().z * randomRotateFactor + time);
+    
+    // Metal and shine with random factors
+    let randomMetal = Math.random() * 0.5 + 0.3;
+    metal(randomMetal * size);
+    shine(Math.random() * 0.5 + 0.3);
+
+    // Randomize size adjustment but ensure it doesn't shrink too small on pointerDown
+    let adjustedSize = size - pointerDown * 0.05; // Shrink by a small amount when clicked, only minimally
+    
+    // Box or Sphere with random size adjustments
+    if (shapeChoice === 'sphere') {
+      sphere(max(0.1, adjustedSize / 2)); // Ensure it doesn't shrink to 0
+    } else {
+      let boxThickness = max(0.1, size * 0.1); // Limit frame thickness to prevent too thick frames
+      boxFrame(vec3(adjustedSize), boxThickness);
+    }
+
+    // Apply blending effects with random factors
+    let randomBlend = Math.random() * 0.2 + 0.1;
+    blend(nsin(time * size) * randomBlend);
+
+    // Create an additional shape, randomly chosen between sphere, boxFrame, or grid
+    let extraShape = Math.random();
+    if (extraShape < 0.33) {
+      sphere(adjustedSize / 3);
+    } else if (extraShape < 0.66) {
+      boxFrame(vec3(adjustedSize * 0.7), adjustedSize * 0.05);
+    } else {
+      grid(adjustedSize / 3, 10, 0.01 * adjustedSize);
+    }
+
+    // Add some randomness to the blending intensity
+    blend(ncos(time * (size)) * (Math.random() * 0.2 + 0.1));
     `
   }
-
-
-    // Helper functions for randomization
-    const randomFloat = (min, max) => (Math.random() * (max - min) + min).toFixed(2);
-    const randomVec3 = () => `[${randomFloat(-1, 1)}, ${randomFloat(-1, 1)}, ${randomFloat(-1, 1)}]`;
-    const randomColor = () => `[${randomFloat(0, 1)}, ${randomFloat(0, 1)}, ${randomFloat(0, 1)}]`;
-    const randomShape = () => {
-      const shapes = ["sphere", "box", "cylinder", "torus"];
-      return shapes[Math.floor(Math.random() * shapes.length)]; 
-    };
+    else if (shader == 'gpt-2') { 
+    return `
+     let size = input();
+    let pointerDown = input();
+    color(0.2, 1, 0.4); // Light green sphere
+    metal(0.4 * size);
+    rotateZ(time * 0.1); // Rotation in Z axis
+    sphere(max(0.1, size * 1.2 - pointerDown * 0.1)); // Allow sphere to move dynamically at lower sizes
+    color(1, 0.8, 0); // Yellow boxFrame
+    boxFrame(vec3(max(0.1, size - pointerDown * 0.1), max(0.1, size - pointerDown * 0.1), max(0.1, size - pointerDown * 0.1)), 0.1); 
+    `
+  } else if (shader == 'generate') {
+    const shapes = [
+      () => `sphere(${(Math.random() * 0.5 + 0.2).toFixed(2)})`, // Random radius
+      () => `box(vec3(${(Math.random() * 0.5 + 0.2).toFixed(2)}, ${(Math.random() * 0.5 + 0.2).toFixed(2)}, ${(Math.random() * 0.5 + 0.2).toFixed(2)}))`, // Random dimensions
+      () => `torus(${(Math.random() * 0.3 + 0.1).toFixed(2)}, ${(Math.random() * 0.1 + 0.05).toFixed(2)})`, // Random major and minor radius
+      () => `cone(${(Math.random() * 0.5 + 0.2).toFixed(2)}, ${(Math.random() * 0.5 + 0.2).toFixed(2)})`, // Random height and radius
+    ];
+  
+    const randomShapeGenerator = shapes[Math.floor(Math.random() * shapes.length)];
+    const randomShape = randomShapeGenerator(); // Generate the shape with appropriate parameters
+  
     return `
       let size = input()
-      shape(() => {
-        // Random transformations
-        translate(${randomVec3()});
-        scale(${randomFloat(0.5, 1.5)});
-        rotateY(${randomFloat(0, Math.PI * 2)});
-        rotateX(${randomFloat(0, Math.PI * 2)});
-        
-        // Random color and shape
-        color(${randomColor()});
-        ${randomShape()}();
-      } 
+      let mouseDown = input()
+      // Random ShaderPark Shader
+      setMaxIterations(150);
+      let t = time;
+      let shape = ${randomShape};
+      shape = shape.scale(vec3(0.5)).rotateX(sin(t) * 3.14).rotateY(cos(t) * 3.14);
+      let color = vec3(abs(sin(t)), abs(cos(t)), abs(sin(t * 0.5)));
+      shape.color(color);
     `;
+  }
 }
 
 //

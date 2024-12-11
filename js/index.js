@@ -60,42 +60,42 @@ fetch('apiKey.json')
   })
   .catch(error => console.error('Error fetching API KEY:', error));
 
-// Replace with your Hugging Face API key
-const API_KEY = apiKey;
+// // Replace with your Hugging Face API key
+// const API_KEY = apiKey;
 
-// Replace with the model you want to use
-const MODEL_NAME = 'google/gemma-2-2b-it';
+// // Replace with the model you want to use
+// const MODEL_NAME = 'google/gemma-2-2b-it';
 
-// Your input text
-const input = "Write me an essay about AI";
+// // Your input text
+// const input = "Write me an essay about AI";
 
-// API endpoint
-const API_URL = `https://api-inference.huggingface.co/models/${MODEL_NAME}`;
+// // API endpoint
+// const API_URL = `https://api-inference.huggingface.co/models/${MODEL_NAME}`;
 
-// Function to make the request
-async function generateText(prompt) {
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ inputs: prompt }),
-  });
+// // Function to make the request
+// async function generateText(prompt) {
+//   const response = await fetch(API_URL, {
+//     method: 'POST',
+//     headers: {
+//       'Authorization': `Bearer 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`,
+//       'Content-Type': 'application/json',
+//     },
+//     body: JSON.stringify({ inputs: prompt }),
+//   });
 
-  if (!response.ok) {
-    console.error(`Error: ${response.status} ${response.statusText}`);
-    const error = await response.json();
-    console.error(error);
-    return;
-  }
+//   if (!response.ok) {
+//     console.error(`Error: ${response.status} ${response.statusText}`);
+//     const error = await response.json();
+//     console.error(error);
+//     return;
+//   }
 
-  const result = await response.json();
-  return result;
-}
+//   const result = await response.json();
+//   return result;
+// }
 
-// Call the function
-console.log(generateText(input));
+// // Call the function
+// console.log(generateText(input));
 
 
 
@@ -133,11 +133,11 @@ var visualizer = {
     mesh : null,
     shader : null,
     analyser : null,
-    SCALE : 10.0,
+    scale : 10.0,
 };
 var audio = null;
 var toneMapping = {
-    EXPOSURE : 1.5,
+    exposure : 1.5,
 };
 var bloomSettings = {
     strength : 1.6,
@@ -151,27 +151,27 @@ var bloom = {
     bloomSettings.radius,
     bloomSettings.threshold
     ),
-  ENABLED : true,
+  enabled : true,
   toggle : () => {
-    bloom.ENABLED = !bloom.ENABLED;
+    bloom.enabled = !bloom.enabled;
     applyPostProcessing();
   }
 }
 var RGBShift = {
     shader : new ShaderPass(RGBShiftShader),
     scale : 0.0015,
-    ENABLED : false,
+    enabled : false,
     toggle : () => {
-      RGBShift.ENABLED = !RGBShift.ENABLED;
+      RGBShift.enabled = !RGBShift.enabled;
       applyPostProcessing();
     }
 }
 var dotShader = {
     shader : new ShaderPass(DotScreenShader),
     scale : 4.0,
-    ENABLED : false,
+    enabled : false,
     toggle : () => {
-      dotShader.ENABLED = !dotShader.ENABLED;
+      dotShader.enabled = !dotShader.enabled;
       applyPostProcessing();
     }
 }
@@ -181,7 +181,12 @@ var effects = [bloom, RGBShift, dotShader];
 
 // shaderpark definitions
 let shaders = [
+  'gpt-3',
+  'gpt-1',
   'default', 
+  'gpt-2',
+  'generate',
+
   'og', 
   'react', 
   'example', 
@@ -200,16 +205,16 @@ var state = {
     currAudio: 0.0,
     time : 0.0,
     volume_multiplier : 0.0,
-    MINIMIZING_FACTOR : 0.8,
-    POWER_FACTOR : 8.0,
-    BASE_SPEED : 0.2,
-    EASING_SPEED : 0.6,
-    ROTATE_TOGGLE : false,
+    minimizing_factor : 0.8,
+    power_factor : 8.0,
+    base_speed : 0.2,
+    easing_speed : 0.6,
+    rotate_toggle : false,
     autorotateSpeed : 0.2,
 }
 
-var INTERSECTED = false;
-var CLICKABLE = false;
+var intersected = false;
+var clickable = false;
 
 // resizing window event
 window.addEventListener( 'resize', onWindowResize );
@@ -258,7 +263,7 @@ function applyPostProcessing() {
   
   // go thru effects array
   for (var i = 0; i < effects.length; i++) {
-    if (effects[i].ENABLED) {
+    if (effects[i].enabled) {
       composer.addPass(effects[i].shader);
     }
   }
@@ -273,7 +278,7 @@ function createVisualizer(selecting) {
   console.log("Loading shader... ")
 
   if (!selecting) {
-    visualizer.shader = generateshaderparkcode('generate'); 
+    visualizer.shader = generateshaderparkcode('gpt-3'); 
     console.log("Shader successfully generated")
   } else {
     shader_index++;
@@ -294,7 +299,7 @@ function createVisualizer(selecting) {
         size : state.size,
         pointerDown: state.pointerDown,
         mouse: state.mouse,
-        _scale: visualizer.SCALE
+        _scale: visualizer.scale
       }
     })
     scene.add(visualizer.mesh);
@@ -313,7 +318,7 @@ function createVisualizer(selecting) {
         size : state.size,
         pointerDown: state.pointerDown,
         mouse: state.mouse,
-        _scale: visualizer.SCALE
+        _scale: visualizer.scale
       }
     })
     rtScene.add(targetMesh);
@@ -383,8 +388,8 @@ function loadAudio() {
   // });
 
   // reset scale
-  visualizer.SCALE = 10.0
-  state.MINIMIZING_FACTOR = .8;
+  visualizer.scale = 10.0
+  state.minimizing_factor = .8;
 
   // get the average frequency of the sound
   const data = visualizer.analyser.getAverageFrequency();
@@ -440,11 +445,11 @@ function addUI() {
       scene.remove( visualizer.mesh );
       createVisualizer(true);
     })
-    vizui.addBinding(state, 'MINIMIZING_FACTOR', {min:0.01, max:2.00, label:'MOD 1'});
-    vizui.addBinding(state, 'POWER_FACTOR', {min:1.0, max:10.0, label:'MOD 2'});
-    vizui.addBinding(state, 'BASE_SPEED', {min: 0.01, max: 0.9, label: 'Base Speed'})
-    vizui.addBinding(state, 'EASING_SPEED', {min: 0.01, max: .9, label: 'Easing Speed' })
-    vizui.addBinding(visualizer, 'SCALE', {min: 1, max: 200.0, label: 'Scale'});
+    vizui.addBinding(state, 'minimizing_factor', {min:0.01, max:2.00, label:'MOD 1'});
+    vizui.addBinding(state, 'power_factor', {min:1.0, max:10.0, label:'MOD 2'});
+    vizui.addBinding(state, 'base_speed', {min: 0.01, max: 0.9, label: 'Base Speed'})
+    vizui.addBinding(state, 'easing_speed', {min: 0.01, max: .9, label: 'Easing Speed' })
+    vizui.addBinding(visualizer, 'scale', {min: 1, max: 200.0, label: 'scale'});
     vizui.addBinding(window, 'TIME_MULTIPLIER', {min: 0.1, max: 100, label: 'Time'});
     vizui.addBinding(state, 'autorotateSpeed', {min: 0.1, max: 10.0, label: 'Rotation Speed'}).on('change', (ev) => {
       controls.autoRotateSpeed = state.autorotateSpeed;
@@ -477,8 +482,8 @@ function addUI() {
     });
 
     const ppui = pane.addFolder({title: 'Post Processing Effects'});
-    ppui.addBinding(toneMapping, 'EXPOSURE').on('change', (ev) => {
-      renderer.toneMappingExposure = toneMapping.EXPOSURE;
+    ppui.addBinding(toneMapping, 'exposure').on('change', (ev) => {
+      renderer.toneMappingexposure = toneMapping.exposure;
     })
     ppui.addButton({
       title: 'Toggle',
@@ -518,7 +523,7 @@ function createScene() {
   renderer.setClearColor( new Color(1, 1, 1), 0);
   document.body.appendChild( renderer.domElement );
   renderer.toneMapping = CineonToneMapping;
-  renderer.toneMappingExposure = toneMapping.EXPOSURE;
+  renderer.toneMappingexposure = toneMapping.exposure;
   renderer.outputColorSpace = SRGBColorSpace;
 
   stats = new Stats();
@@ -548,13 +553,13 @@ function createScene() {
 
   // Add mouse controlls
   controls = new OrbitControls( camera, renderer.domElement, {
-    enableDamping : true,
+    enabledamping : true,
     dampingFactor : 0.25,
     zoomSpeed : 0.5,
     rotateSpeed : 0.5
   } );
-  controls.enableDamping = true;
-  controls.autoRotate = state.ROTATE_TOGGLE;
+  controls.enabledamping = true;
+  controls.autoRotate = state.rotate_toggle;
   controls.autoRotateSpeed = state.autorotateSpeed;
 
   // Keyboard events
@@ -575,7 +580,7 @@ function createScene() {
     state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
   }, false );
   renderer.domElement.onmousedown = function( down_event ){
-    if (CLICKABLE) {
+    if (clickable) {
       controls.enabled = false;
       img.hidden = true;
       state.currPointerDown = 1.0
@@ -583,7 +588,7 @@ function createScene() {
   }
   window.addEventListener( 'pointerup', (event) => {
     // read file
-    if (CLICKABLE) {
+    if (clickable) {
       if (event.button == 0) {
         fileInput.click();
       }
@@ -701,7 +706,6 @@ function animate() {
       timeIncreasing = true
     }
   }
-  console.log(state.time);
 
   // use easing and linear interpolation to smoothly animate mouse effects
   state.pointerDown = .1 * state.currPointerDown + .9 * state.pointerDown;
@@ -710,14 +714,14 @@ function animate() {
   var audio_input = 0;
 
   if (audio != null) {
-    let analysis = Math.pow((visualizer.analyser.getFrequencyData()[2]/255)*state.MINIMIZING_FACTOR, state.POWER_FACTOR);
+    let analysis = Math.pow((visualizer.analyser.getFrequencyData()[2]/255)*state.minimizing_factor, state.power_factor);
     //console.log(analysis)
-    audio_input = analysis + clock.getDelta() * state.BASE_SPEED;
+    audio_input = analysis + clock.getDelta() * state.base_speed;
   }
   //console.log(clock.getDelta())
   let val = Math.sin(state.time)*(state.size)*0.02+0.1;
-  state.currAudio = audio_input + val *state.BASE_SPEED + clock.getDelta() * state.BASE_SPEED;
-  state.size = (1-state.EASING_SPEED) * state.currAudio + state.EASING_SPEED * state.size + state.volume_multiplier*.01;
+  state.currAudio = audio_input + val *state.base_speed + clock.getDelta() * state.base_speed;
+  state.size = (1-state.easing_speed) * state.currAudio + state.easing_speed * state.size + state.volume_multiplier*.01;
   if (audio_input > 0.03) {
     shake();
   }
@@ -741,15 +745,15 @@ function animate() {
     // shrink the orb for feedback
     //state.volume_multiplier = state.currMouse.y * 2
     camera.fov += state.currMouse.y
-    state.BASE_SPEED = Math.max(0.1, Math.min(0.9, state.BASE_SPEED+state.currMouse.y/50))
-    state.MINIMIZING_FACTOR = Math.max(0.01, Math.min(1.0, state.MINIMIZING_FACTOR+state.currMouse.y/100));
-    visualizer.SCALE = Math.max(1.0, Math.min(30.0, visualizer.SCALE+state.currMouse.y)); //state.currMouse.y * .2
+    state.base_speed = Math.max(0.1, Math.min(0.9, state.base_speed+state.currMouse.y/50))
+    state.minimizing_factor = Math.max(0.01, Math.min(1.0, state.minimizing_factor+state.currMouse.y/100));
+    visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y)); //state.currMouse.y * .2
     audio.setVolume(Math.max(0.0, Math.min(1.0, audio.getVolume() + state.currMouse.y/2 * 0.1)));
   } else
 
   // ONLY CHECK PIXEL IF IT INTERSECTS
   if ( intersects.length > 0 ) {
-    INTERSECTED = true;
+    intersected = true;
       
     // Render Shader Park material to the render target
     renderer.setRenderTarget(renderTarget);
@@ -765,16 +769,16 @@ function animate() {
     // Check if pixel belongs to shader (e.g., non-zero alpha)
     if (pixelBuffer[3] > 0) {
       // Grow sphere
-      state.size += .03*(1-state.EASING_SPEED+0.01)
-      CLICKABLE = true;
+      state.size += .03*(1-state.easing_speed+0.01)
+      clickable = true;
       divContainer.visible = true;
     } else {
-      CLICKABLE = false;
+      clickable = false;
       divContainer.visible = false;
     }
   } else {
-    INTERSECTED = false;
-    CLICKABLE = false;
+    intersected = false;
+    clickable = false;
     divContainer.visible = false;
   }
   stats.update();
