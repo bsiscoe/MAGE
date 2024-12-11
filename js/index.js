@@ -235,7 +235,8 @@ document.getElementById('btn2').addEventListener('click', function() {
 ////////////////
 
 window.onload = function(){ 
-  
+  eventSetup();
+
   createScene();
 
   createVisualizer(true); // true selects from array
@@ -580,7 +581,7 @@ function createScene() {
     state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
   }, false );
   renderer.domElement.onmousedown = function( down_event ){
-    if (clickable) {
+    if (CLICKABLE) {
       controls.enabled = false;
       img.hidden = true;
       state.currPointerDown = 1.0
@@ -588,7 +589,7 @@ function createScene() {
   }
   window.addEventListener( 'pointerup', (event) => {
     // read file
-    if (clickable) {
+    if (CLICKABLE) {
       if (event.button == 0) {
         fileInput.click();
       }
@@ -692,6 +693,78 @@ function restoreScene() {
   //state = JSON.parse(localStorage["state"]);
   visualizer = JSON.parse(localStorage.getItem('visualizer'));
 }   
+
+function eventSetup() {
+  // resizing window event
+  window.addEventListener( 'resize', onWindowResize );
+
+  // file upload event
+  document.getElementById("file").addEventListener("change", loadAudio, false);
+
+  const canvas = document.querySelector('canvas');
+
+  // canvas.addEventListener('click', () => {
+  //   canvas.requestPointerLock();
+  // });
+
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === canvas) {
+        console.log('Pointer locked: interaction enabled.');
+    } else {
+        console.log('Pointer unlocked: interaction disabled.');
+    }
+  });
+
+  // Keyboard events
+  window.onkeydown = function(e) {
+    switch (e.code) {
+      case 'Space':
+        window.pane.hidden = !window.pane.hidden;
+        stats.dom.style.display = stats.dom.style.display == 'none' ? 'block' : 'none';
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Mouse events
+  window.addEventListener( 'pointermove', (event) => {
+    state.currMouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+    state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+  }, false );
+  
+  window.addEventListener( 'pointerdown', (event) => {
+    if (CLICKABLE) {
+      controls.enabled = false;
+      img.hidden = true;
+      state.currPointerDown = 1.0
+    }
+  });
+
+  window.addEventListener( 'pointerup', (event) => {
+    // read file
+    if (CLICKABLE) {
+      if (event.button == 0) {
+        fileInput.click();
+      }
+    }
+    //audio.setPlaybackRate(1.0); 
+    //audio.play();
+    img.hidden = false;
+    controls.enabled = true;
+    state.currPointerDown = 0.0;
+  }); 
+
+
+  // document.getElementById('btn').addEventListener('click', function() {
+  //   saveScene();
+  // })
+
+  // document.getElementById('btn2').addEventListener('click', function() {
+  //   restoreScene();
+  // })
+  
+}
 
 function animate() {
   requestAnimationFrame( animate );

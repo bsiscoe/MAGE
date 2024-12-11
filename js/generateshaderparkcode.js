@@ -12,8 +12,8 @@ export function generateshaderparkcode(shader)  {
       let pointerDown = input()
       time = .3*time
 	  size *= 1.3
-      rotateY(mouse.x * -5 * PI / 2 + time -(pointerDown+0.1))
-      rotateX(mouse.y * 5 * PI / 2 + time)
+      rotateY(mouse.x * -5 * PI / 2 * sin(time) -(pointerDown+0.1))
+      rotateX(mouse.y * 5 * PI / 2 * sin(time))
       metal(.5*size)
       color(normalize(getRayDirection())+.2)
       rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
