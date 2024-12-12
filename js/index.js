@@ -47,58 +47,6 @@ import * as AudioPlayerPlugin from 'https://unpkg.com/tweakpane-plugin-audio-pla
 import {CSS2DRenderer, CSS2DObject} from 'three/addons/renderers/CSS2DRenderer'
 import Stats from 'three/addons/libs/stats.module'
 
-////////////////////
-// AI GENERATION ///
-////////////////////
-// Retrieve API key from JSON
-var apiKey;
-fetch('apiKey.json')
-  .then(response => response.json())
-  .then(data => {
-    apiKey = data.key; 
-    console.log(apiKey)
-  })
-  .catch(error => console.error('Error fetching API KEY:', error));
-
-// // Replace with your Hugging Face API key
-// const API_KEY = apiKey;
-
-// // Replace with the model you want to use
-// const MODEL_NAME = 'google/gemma-2-2b-it';
-
-// // Your input text
-// const input = "Write me an essay about AI";
-
-// // API endpoint
-// const API_URL = `https://api-inference.huggingface.co/models/${MODEL_NAME}`;
-
-// // Function to make the request
-// async function generateText(prompt) {
-//   const response = await fetch(API_URL, {
-//     method: 'POST',
-//     headers: {
-//       'Authorization': `Bearer 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`,
-//       'Content-Type': 'application/json',
-//     },
-//     body: JSON.stringify({ inputs: prompt }),
-//   });
-
-//   if (!response.ok) {
-//     console.error(`Error: ${response.status} ${response.statusText}`);
-//     const error = await response.json();
-//     console.error(error);
-//     return;
-//   }
-
-//   const result = await response.json();
-//   return result;
-// }
-
-// // Call the function
-// console.log(generateText(input));
-
-
-
 //////////////////////
 ///GLOBAL VARIABLES///
 //////////////////////
@@ -181,12 +129,7 @@ var effects = [bloom, RGBShift, dotShader];
 
 // shaderpark definitions
 let shaders = [
-  'gpt-3',
-  'gpt-1',
   'default', 
-  'gpt-2',
-  'generate',
-
   'og', 
   'react', 
   'example', 
@@ -222,24 +165,25 @@ window.addEventListener( 'resize', onWindowResize );
 // file upload event
 document.getElementById("file").addEventListener("change", loadAudio, false);
 
-document.getElementById('btn').addEventListener('click', function() {
-  saveScene();
-})
+// document.getElementById('btn').addEventListener('click', function() {
+//   saveScene();
+// })
 
-document.getElementById('btn2').addEventListener('click', function() {
-  restoreScene();
-})
+// document.getElementById('btn2').addEventListener('click', function() {
+//   restoreScene();
+// })
 
 ////////////////
 /// THREE JS ///
 ////////////////
 
 window.onload = function(){ 
+  
   eventSetup();
 
   createScene();
 
-  createVisualizer(true); // true selects from array
+  createVisualizer(); // true selects from array
   
   loadAudio();
 
@@ -325,7 +269,7 @@ function createVisualizer(selecting) {
     rtScene.add(targetMesh);
 
     // create a skybox
-    geometry = new SphereGeometry(800, 60, 40);
+    geometry = new SphereGeometry(400, 60, 40);
     geometry.scale(-1, 1, 1);
     let texture = new TextureLoader().load("../resources/skybox.png");
     let material = new MeshBasicMaterial({map: texture});
@@ -362,20 +306,21 @@ function loadAudio() {
         audio.setBuffer( buffer );
       });
 
-      reversedAudioBuffer = reverseAudioBuffer(audioBuffer);
-      context.decodeAudioData( reversedAudioBuffer, function ( buffer ) {
-        reversedAudio.setBuffer( buffer );
-      });
+      // reversedAudioBuffer = reverseAudioBuffer(audioBuffer);
+      // context.decodeAudioData( reversedAudioBuffer, function ( buffer ) {
+      //   reversedAudio.setBuffer( buffer );
+      // });
       
     });
 
     audioFile = event.target.files[0];
     reader.readAsArrayBuffer( audioFile );
     if (audioFile != null) {
-      img.src = 'controltips.png';
+      img.src = '../resources/controltips.png';
+      audio.autoplay = true;
+      document.title = "MAGE - Playing Audio";
     }
   });
-  audio.autoplay = true;
 
   // create an AudioAnalyser, passing in the sound and desired fftSize
   visualizer.analyser = new AudioAnalyser( audio, 32 );
@@ -484,7 +429,7 @@ function addUI() {
 
     const ppui = pane.addFolder({title: 'Post Processing Effects'});
     ppui.addBinding(toneMapping, 'exposure').on('change', (ev) => {
-      renderer.toneMappingexposure = toneMapping.exposure;
+      renderer.toneMappingExposure = toneMapping.exposure;
     })
     ppui.addButton({
       title: 'Toggle',
@@ -504,7 +449,12 @@ function addUI() {
       camera.updateProjectionMatrix();
     });
     camui.addBinding(camera, 'fov', {min: 1, max: 359, label: 'FOV'});
-
+    camui.addButton({
+      title: 'Reset',
+      label: 'Camera Position'
+    }).on('click', () => {
+      controls.reset();
+    })
     window.pane = pane;
     window.pane.hidden = true;
 }
@@ -562,44 +512,7 @@ function createScene() {
   controls.enabledamping = true;
   controls.autoRotate = state.rotate_toggle;
   controls.autoRotateSpeed = state.autorotateSpeed;
-
-  // Keyboard events
-  window.onkeydown = function(e) {
-    switch (e.code) {
-      case 'Space':
-        window.pane.hidden = !window.pane.hidden;
-        stats.dom.style.display = stats.dom.style.display == 'none' ? 'block' : 'none';
-        break;
-      default:
-        break;
-    }
-  }
-  
-  // Mouse events
-  window.addEventListener( 'pointermove', (event) => {
-    state.currMouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-    state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-  }, false );
-  renderer.domElement.onmousedown = function( down_event ){
-    if (CLICKABLE) {
-      controls.enabled = false;
-      img.hidden = true;
-      state.currPointerDown = 1.0
-    }
-  }
-  window.addEventListener( 'pointerup', (event) => {
-    // read file
-    if (CLICKABLE) {
-      if (event.button == 0) {
-        fileInput.click();
-      }
-    }
-    //audio.setPlaybackRate(1.0); 
-    //audio.play();
-    img.hidden = false;
-    controls.enabled = true;
-    state.currPointerDown = 0.0;
-  }); 
+  controls.saveState();
 }
 
 function ScreenShake() {
@@ -734,7 +647,7 @@ function eventSetup() {
   }, false );
   
   window.addEventListener( 'pointerdown', (event) => {
-    if (CLICKABLE) {
+    if (clickable) {
       controls.enabled = false;
       img.hidden = true;
       state.currPointerDown = 1.0
@@ -743,13 +656,13 @@ function eventSetup() {
 
   window.addEventListener( 'pointerup', (event) => {
     // read file
-    if (CLICKABLE) {
+    if (clickable) {
       if (event.button == 0) {
         fileInput.click();
       }
     }
-    //audio.setPlaybackRate(1.0); 
-    //audio.play();
+    audio.setPlaybackRate(1.0); 
+    audio.play();
     img.hidden = false;
     controls.enabled = true;
     state.currPointerDown = 0.0;
@@ -772,11 +685,22 @@ function animate() {
   // alternates flow of time to prevent animation bugs
   if (timeIncreasing && state.time < 1000) {
     state.time += TIME_MULTIPLIER*clock.getDelta();
+    
   } else {
     timeIncreasing = false;
     state.time -= TIME_MULTIPLIER*clock.getDelta();
     if (state.time == 0) {
       timeIncreasing = true
+    }
+  }
+ 
+  // animate tab bar
+  let timeCalc =  (1 + Math.sin(state.time)) * 10 / 2;
+  if (audioFile != null) {
+    if (timeCalc > 5.0) {
+      document.title = "MAGE - Playing Audio...";
+    } else {
+      document.title = "MAGE - Playing Audio";
     }
   }
 
@@ -805,19 +729,15 @@ function animate() {
     
   // if orbit controls are disabled then control audio
   if (controls.enabled == false) {
-    //audio.setPlaybackRate(state.currMouse.x + 1); 
-    // if (audio.getPlaybackRate() < 0) {
-    //   audio.setPlaybackRate(Math.abs(audio.getPlaybackRate()))
-    // }
-    // if (audio.getPlaybackRate() < 0 && audioBuffer != null) {
-    //     audio.currentTime = 0;
-    //   } else {
-    // }
+    audio.setPlaybackRate(state.currMouse.x + 1); 
+    if (audio.getPlaybackRate() < 0 && audioBuffer != null) {
+        audio.currentTime = 0;
+      } else {
+    }
     //console.log(audio.getVolume())
 
     // shrink the orb for feedback
-    //state.volume_multiplier = state.currMouse.y * 2
-    camera.fov += state.currMouse.y
+    state.volume_multiplier = state.currMouse.y * 2
     state.base_speed = Math.max(0.1, Math.min(0.9, state.base_speed+state.currMouse.y/50))
     state.minimizing_factor = Math.max(0.01, Math.min(1.0, state.minimizing_factor+state.currMouse.y/100));
     visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y)); //state.currMouse.y * .2

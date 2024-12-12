@@ -24,7 +24,7 @@ export function generateshaderparkcode(shader)  {
       blend(nsin(time*(size))*0.1+0.1)
       sphere(size/2-pointerDown*.3)
       blend(ncos((time*(size)))*0.1+0.1)
-      boxFrame(vec3(size-.1*pointerDown), size-pointerDown*.1)
+      boxFrame(vec3(size-.1*pointerDown), size)
       `
     } else if (shader == 'og')
       {
