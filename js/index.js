@@ -184,7 +184,7 @@ window.onload = function(){
   createScene();
 
   createVisualizer(true); // true selects from array
-  
+
   loadAudio();
 
   applyPostProcessing();
@@ -288,7 +288,7 @@ function loadAudio() {
 
   // create an Audio source
   if (audio) {
-    audio.pause()
+    //audio.pause()
   }
   audio = new Audio( listener );
   reversedAudio = new Audio( listener )
@@ -317,10 +317,11 @@ function loadAudio() {
     reader.readAsArrayBuffer( audioFile );
     if (audioFile != null) {
       img.src = 'https://bsiscoe.github.io/MAGE/resources/controltips.png';
-      audio.autoplay = true;
       document.title = "MAGE - Playing Audio";
     }
   });
+
+  audio.autoplay = true;
 
   // create an AudioAnalyser, passing in the sound and desired fftSize
   visualizer.analyser = new AudioAnalyser( audio, 32 );
@@ -611,9 +612,6 @@ function eventSetup() {
   // resizing window event
   window.addEventListener( 'resize', onWindowResize );
 
-  // file upload event
-  document.getElementById("file").addEventListener("change", loadAudio, false);
-
   const canvas = document.querySelector('canvas');
 
   // canvas.addEventListener('click', () => {
@@ -644,6 +642,10 @@ function eventSetup() {
   window.addEventListener( 'pointermove', (event) => {
     state.currMouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
     state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+    if (controls.enabled == false) {
+      
+    }
   }, false );
   
   window.addEventListener( 'pointerdown', (event) => {
@@ -659,6 +661,7 @@ function eventSetup() {
     if (clickable) {
       if (event.button == 0) {
         fileInput.click();
+        clickable = false;
       }
     }
     audio.setPlaybackRate(1.0); 
@@ -730,18 +733,22 @@ function animate() {
   // if orbit controls are disabled then control audio
   if (controls.enabled == false) {
     audio.setPlaybackRate(state.currMouse.x + 1); 
-    if (audio.getPlaybackRate() < 0 && audioBuffer != null) {
-        audio.currentTime = 0;
-      } else {
-    }
-    //console.log(audio.getVolume())
+      if (audio.getPlaybackRate() < 0) {
+        audio.setPlaybackRate(Math.abs(audio.getPlaybackRate()))
+      }
+      if (audio.getPlaybackRate() < 0 && audioBuffer != null) {
+          audio.currentTime = 0;
+        } else {
+      }
+      //console.log(audio.getVolume())
 
-    // shrink the orb for feedback
-    state.volume_multiplier = state.currMouse.y * 2
-    state.base_speed = Math.max(0.1, Math.min(0.9, state.base_speed+state.currMouse.y/50))
-    state.minimizing_factor = Math.max(0.01, Math.min(1.0, state.minimizing_factor+state.currMouse.y/100));
-    visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y)); //state.currMouse.y * .2
-    audio.setVolume(Math.max(0.0, Math.min(1.0, audio.getVolume() + state.currMouse.y/2 * 0.1)));
+      // shrink the orb for feedback
+      state.volume_multiplier = state.currMouse.y * 2
+      camera.fov += state.currMouse.y
+      state.base_speed = Math.max(0.1, Math.min(0.9, state.base_speed+state.currMouse.y/50))
+      state.minimizing_factor = Math.max(0.01, Math.min(1.0, state.minimizing_factor+state.currMouse.y/100));
+      visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y)); //state.currMouse.y * .2
+      audio.setVolume(Math.max(0.0, Math.min(1.0, audio.getVolume() + state.currMouse.y/2 * 0.1)));
   } else
 
   // ONLY CHECK PIXEL IF IT INTERSECTS
