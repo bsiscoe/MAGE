@@ -271,7 +271,7 @@ function createVisualizer(selecting) {
     // create a skybox
     geometry = new SphereGeometry(400, 60, 40);
     geometry.scale(-1, 1, 1);
-    let texture = new TextureLoader().load("../resources/skybox.png");
+    let texture = new TextureLoader().load("https://bsiscoe.github.io/MAGE/resources/skybox.png");
     let material = new MeshBasicMaterial({map: texture});
     let mesh = new Mesh(geometry, material);
     scene.add(mesh);
@@ -316,7 +316,7 @@ function loadAudio() {
     audioFile = event.target.files[0];
     reader.readAsArrayBuffer( audioFile );
     if (audioFile != null) {
-      img.src = '../resources/controltips.png';
+      img.src = 'https://bsiscoe.github.io/MAGE/resources/controltips.png';
       audio.autoplay = true;
       document.title = "MAGE - Playing Audio";
     }
@@ -491,7 +491,7 @@ function createScene() {
 
   // add in tooltip ui
   img = document.createElement('img');
-  img.src = '../resources/middlemouse.png';
+  img.src = 'https://bsiscoe.github.io/MAGE/resources/middlemouse.png';
   const div = document.createElement('div')
   div.appendChild(img)
   divContainer = new CSS2DObject(div);
