@@ -183,7 +183,7 @@ window.onload = function(){
 
   createScene();
 
-  createVisualizer(); // true selects from array
+  createVisualizer(true); // true selects from array
   
   loadAudio();
 
