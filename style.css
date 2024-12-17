@@ -24,3 +24,174 @@ canvas {
   border : 0px;
   background-color : transparent;
 }
+
+abbr {
+  padding:5x 10px;
+}
+abbr:hover:before {
+  content: attr(title-card);
+  position:absolute;
+   background:#000;
+   color:#fff;
+   padding:5px 15px;
+   margin:-35px 0 0 0;
+}
+
+.ui_buttons{
+  position: absolute;
+  z-index: 3;
+  bottom: 10px;
+  width: 100%;
+  display: flex; 
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  /* border:1px solid #333; */
+}
+
+.ui_button_small{
+  z-index:4;
+  width:80px;height:64px;
+  margin-left:3px;margin-right:3px;margin-bottom:14px;
+  overflow: hidden;
+  color:#fff;font-size:16px;font-weight: 800;
+  cursor: pointer;
+  opacity: 0.4;
+  pointer-events: auto;
+  background-color: #000;
+  text-align: center;
+  padding:7px 0px;
+}
+
+.ui_button_small:hover {
+  background-color: rgba(116, 116, 116, 0.2); /* Darker background when hovering */
+  border-color: #3d4400; /* Darker border when hovering */
+}
+
+/* Focus effect for accessibility */
+.ui_button_small:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.2); /* Focus ring effect */
+}
+
+
+.ui_bgs{
+  position: absolute;z-index:3;
+  left:6px;width:140px;height:auto;
+  pointer-events: none;
+  display: block; /* Hide the buttons initially */
+}
+  .ui_bg{
+    width: auto;height: auto;
+    margin-top:5px;margin-bottom:5px;
+    /* border:1px solid #333; */
+    pointer-events: none;
+  }
+    .ui_bg_item{
+      width:20px;height:20px;
+      border:1px solid rgba(109, 109, 109, 0.8);
+      border-radius: 50%;overflow: hidden;
+      display: block;float: left;
+      cursor: pointer;
+      pointer-events: all;
+    }
+    @media (min-width: 1281px) {
+      .ui_bg_item:hover{
+        border:1px solid rgba(0,0,0,1);
+      }
+    }
+    .ui_bg_label{
+      font-size:10px;
+      color:rgba(0,0,0,0.9);
+      display: block;float: left;
+      margin-left:8px;
+      font-weight: 700;
+      margin-top:3px;
+      display: none;
+      pointer-events: none;
+    }
+/* bg icons */
+.solid_01{background-color:#b6af93;}
+.solid_02{background-color:#15250d;}
+.solid_03{background-color:#ffa800;}
+.bg_grad_container{
+  width:100%;height:100%;
+  overflow:hidden;
+  position:absolute;z-index:1;
+}
+.bg_grad{
+  width:100%;height:100%;
+}
+.scene_grad01{background-image: linear-gradient(180deg, #102329 0%, #690000 50%, #830078 100%);}
+.scene_grad02{background-image: linear-gradient(180deg, #000000,  #0000ff);}
+.scene_grad03{background-image: linear-gradient(180deg,  #ed9845,  #75482a );}
+.scene_grad04{background-image: linear-gradient(180deg,  #d5ea62, #222);	}
+.scene_grad05{background-image: linear-gradient(180deg,  rgba(146,221,219,1) 31.2%, rgba(236,167,219,1) 90.9% );} 
+.scene_grad06{background-image: linear-gradient(180deg,  #ddd, #666);	}
+.scene_grad07{background-image: linear-gradient(180deg, #91b8cd 0%, #aebc62 50%, #2c2d44 100%);}
+.scene_grad08{background-image: linear-gradient(180deg, #e3d0a6 0%, #e193e0 50%, #53356c 100%);}
+
+.scene_skybox01{
+  background: url('img/skyboxes/skybox_space1/sky1thumb.jpg') no-repeat;
+  background-size: 100%;
+}
+.scene_skybox02{
+  background: url('img/skyboxes/skybox_space2/sky2thumb.jpg') no-repeat;
+  background-size: 100%;
+}
+.scene_skybox03{
+  background: url('img/skyboxes/skybox_space3/sky3thumb.jpg') no-repeat;
+  background-size: 100%;
+}
+.scene_sky01{
+  background: url('img/skyboxes/skybox_sky1/thumb01.jpg') no-repeat;
+  background-size: 100%;
+}
+/* slider override  ----------------------------------------------------------- */
+  .noUi-horizontal {
+    height: 8px;
+  }
+  .noUi-horizontal .noUi-handle {
+    width: 20px;
+    height: 20px;
+    right: -12px;
+    top: -6px;
+  }
+  .noUi-handle {
+    /* border: 1px solid #aaa; */
+    border-radius:50%;
+    background: #ccc !important;
+    background-color: #ccc !important;
+    cursor: ew-resize;
+    outline: none;
+    overflow:hidden;
+    border:none !important;
+
+  }
+  .noUi-handle:before,
+  .noUi-handle:after {
+    background: #ddd !important;
+    background-color: #ddd !important;
+    /* content: "";
+    display: block;
+    position: absolute;
+    height: 14px;
+    width: 1px;
+    background: #E8E7E6;
+    left: 14px;
+    top: 6px; */
+  }
+  .noUi-handle:after {
+    /* left: 17px; */
+  }
+  .noUi-target {
+    background: #666;
+    border-radius: 5px;
+    /* border: 1px solid #aaa; */
+  }
+  .noUi-connect {
+    background: #999;
+  }
+  .noUi-connects{
+    /* margin-top: 15px; */
+  }

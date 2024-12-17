@@ -12,8 +12,8 @@ export function generateshaderparkcode(shader)  {
       let pointerDown = input()
       time = .3*time
 	  size *= 1.3
-      rotateY(mouse.x * -5 * PI / 2 * sin(time) -(pointerDown+0.1))
-      rotateX(mouse.y * 5 * PI / 2 * sin(time))
+      rotateY(mouse.x * -2 * PI / 2 * (1+nsin(time)))
+      rotateX(mouse.y * 2 * PI / 2 * (1+nsin(time)))
       metal(.5*size)
       color(normalize(getRayDirection())+.2)
       rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
@@ -24,7 +24,7 @@ export function generateshaderparkcode(shader)  {
       blend(nsin(time*(size))*0.1+0.1)
       sphere(size/2-pointerDown*.3)
       blend(ncos((time*(size)))*0.1+0.1)
-      boxFrame(vec3(size-.1*pointerDown), size)
+      boxFrame(vec3(size-.075*pointerDown), size)
       `
     } else if (shader == 'og')
       {
@@ -408,28 +408,180 @@ export function generateshaderparkcode(shader)  {
     color(1, 0.8, 0); // Yellow boxFrame
     boxFrame(vec3(max(0.1, size - pointerDown * 0.1), max(0.1, size - pointerDown * 0.1), max(0.1, size - pointerDown * 0.1)), 0.1); 
     `
-  } else if (shader == 'generate') {
-    const shapes = [
-      () => `sphere(${(Math.random() * 0.5 + 0.2).toFixed(2)})`, // Random radius
-      () => `box(vec3(${(Math.random() * 0.5 + 0.2).toFixed(2)}, ${(Math.random() * 0.5 + 0.2).toFixed(2)}, ${(Math.random() * 0.5 + 0.2).toFixed(2)}))`, // Random dimensions
-      () => `torus(${(Math.random() * 0.3 + 0.1).toFixed(2)}, ${(Math.random() * 0.1 + 0.05).toFixed(2)})`, // Random major and minor radius
-      () => `cone(${(Math.random() * 0.5 + 0.2).toFixed(2)}, ${(Math.random() * 0.5 + 0.2).toFixed(2)})`, // Random height and radius
-    ];
-  
-    const randomShapeGenerator = shapes[Math.floor(Math.random() * shapes.length)];
-    const randomShape = randomShapeGenerator(); // Generate the shape with appropriate parameters
-  
-    return `
-      let size = input()
-      let mouseDown = input()
-      // Random ShaderPark Shader
-      setMaxIterations(150);
-      let t = time;
-      let shape = ${randomShape};
-      shape = shape.scale(vec3(0.5)).rotateX(sin(t) * 3.14).rotateY(cos(t) * 3.14);
-      let color = vec3(abs(sin(t)), abs(cos(t)), abs(sin(t * 0.5)));
-      shape.color(color);
+  } else if (shader == 'generated-draft1') {
+    // Define parameters and randomization logic
+// Random parameters for ShaderPark
+const shapeChoice = Math.random() > 0.5 ? 'sphere' : 'boxFrame';
+const colorChoices = [
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+  `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+];
+const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+
+const randomRotateFactor = Math.random() * 2 + 1;
+const randomMetal = Math.random() * 0.5 + 0.3;
+const randomShine = Math.random() * 0.5 + 0.3;
+const randomBlend = Math.random() * 0.2 + 0.1;
+
+const extraShapeChoice = Math.random();
+let extraShape;
+if (extraShapeChoice < 0.33) {
+  extraShape = 'sphere(size / 3);';
+} else if (extraShapeChoice < 0.66) {
+  extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+} else {
+  extraShape = 'grid(size / 3, 10, 0.01 * size);';
+}
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  let size = input();
+  let pointerDown = input();
+
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal} * size);
+  shine(${randomShine});
+
+  // Main shape
+  if ('${shapeChoice}' === 'sphere') {
+    sphere(max(0.1, size / 2 - pointerDown * 0.05));
+  } else {
+    let boxThickness = max(0.1, size * 0.1);
+    boxFrame(vec3(size - pointerDown * 0.05), boxThickness);
+  }
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend});
+
+  // Extra shape
+  ${extraShape}
+`;
+
+return shaderCode;
+  }
+  else if (shader == 'background') { // Random values for color and effects
+    // Randomized parameters for the skybox
+    let bgColor1 = [Math.random(), Math.random(), Math.random()];
+    let bgColor2 = [Math.random(), Math.random(), Math.random()];
+    let cloudIntensity = Math.random() * 0.2 + 0.1; // Lower range for subtle clouds
+    let starFrequency = Math.random() * 4 + 2; // Range: 2 to 6
+    let starStrength = Math.random() * 0.02 + 0.01; // Brightness is subtle
+    
+    let skyboxShader = `
+        let bgColor1 = vec3(${bgColor1[0]}, ${bgColor1[1]}, ${bgColor1[2]});
+        let bgColor2 = vec3(${bgColor2[0]}, ${bgColor2[1]}, ${bgColor2[2]});
+        let cloudIntensity = ${cloudIntensity};
+        let starFrequency = ${starFrequency};
+        let starStrength = ${starStrength};
+    
+        let direction = getRayDirection();
+    
+        // Vertical gradient (sky)
+        let gradient = mix(bgColor1, bgColor2, clamp(direction.y * 0.5 + 0.5, 0.0, 1.0));
+    
+        // Soft cloud-like effect using nsin patterns
+        let cloudEffect = nsin(direction.x * 5.0 + time * 0.1) * nsin(direction.y * 5.0 - time * 0.1);
+        cloudEffect *= cloudIntensity;
+    
+        // Star effect using high-frequency nsin
+        let starEffect = nsin(sin(direction.x * starFrequency) * sin(direction.y * starFrequency) * 20.0);
+        starEffect = step(1.0 - starStrength, starEffect); // Threshold to highlight bright star points
+    
+        // Combine gradient, clouds, and stars, clamping to ensure visibility
+        let finalColor = gradient + vec3(cloudEffect) + vec3(starEffect * 0.5);
+        color(clamp(finalColor, 0.0, 1.0));
     `;
+
+    return skyboxShader;
+  }
+  else if (shader == 'generated') {
+    // Define parameters and randomization logic
+// Random parameters for ShaderPark
+const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+const numShapes = Math.floor(Math.random() * 4) + 2;  // Random number of shapes between 2 and 5
+let shapes = [];
+
+for (let i = 0; i < numShapes; i++) {
+  const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+  const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+  shapes.push({ shape: shapeChoice, sizeFactor });
+}
+
+const colorChoices = [
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+  `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+];
+const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+
+const randomRotateFactor = Math.random() * 2 + 1;
+const randomMetal = Math.random() * 0.5 + 0.3;
+const randomShine = Math.random() * 0.5 + 0.3;
+const randomBlend = Math.random() * 0.2 + 0.1;
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  let size = input();
+  let pointerDown = input();
+
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal} * size);
+  shine(${randomShine});
+
+  // Render the shapes
+  ${shapes.map(({ shape, sizeFactor }) => {
+    const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+    
+    switch (shape) {
+      case 'sphere':
+        return `sphere(${adjustedSize} / 2);`;
+      case 'boxFrame':
+        return `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+      case 'torus':
+        return `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+      case 'cylinder':
+        return `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+      case 'grid':
+        return `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+      default:
+        return '';
+    }
+  }).join('\n')}
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend});
+`;
+
+return shaderCode;
+
+
+
+
+
+
   }
 }
 
