@@ -1,12 +1,16 @@
 // TO DO 
 
-// refactor code logic
-// decide on default/random scene to start
+// something...
+// tweakpane skybox folder
 // fix controllingAudio playback rate logic
 // add more threejs effects
+// bloom and tone mapping 
+// fix bloom 
+// save camera properties
 // add more scene presets
 // add more skyboxes
 // adjust tweakpane ui to not have unnecessary values and have more
+// RANDOM TWEAK PANE VALUES
 // better randomization and more fx
 
 
@@ -32,6 +36,7 @@ import {
   CubeTextureLoader,
   CineonToneMapping,
   LinearToneMapping,
+  ReinhardToneMapping,
   LoadingManager,
   Raycaster,
   RGBAFormat,
@@ -57,7 +62,6 @@ import { LuminosityShader } from 'three/addons/shaders/LuminosityShader.js';
 import { SobelOperatorShader } from 'three/addons/shaders/SobelOperatorShader.js';
 import {CSS2DRenderer, CSS2DObject} from 'three/addons/renderers/CSS2DRenderer'
 import Stats from 'three/addons/libs/stats.module'
-import { getCookie, saveShaderToCookie, restoreShaderFromCookie } from './cookiehandlers.js';
 
 //////////////////////
 ///GLOBAL VARIABLES///
@@ -76,21 +80,19 @@ var rtScene;
 var rtCamera;
 var controls;
 var clock;
-var divContainer;
-var cookieData;
+var tooltipUI;
 var img;
 var audioFile;
 var listener;
 var labelRenderer;
 var audioBuffer;
-var reversedAudioBuffer;
 var reversedAudio;
 var shader_index = -1;
 var timeIncreasing = true;
 var pointer = new Vector2();
 var fileInput = document.getElementById('file');
 var visualizer = {
-    generated : false, // TESTING
+    path : null,
     mesh : null,
     shader : null,
     analyser : null,
@@ -116,35 +118,23 @@ var bloom = {
     bloomSettings.radius,
     bloomSettings.threshold
     ),
-  enabled : true,
-  toggle : () => {
-    bloom.enabled = !bloom.enabled;
-    applyPostProcessing();
-  }
+  enabled : false,
 }
 var RGBShift = {
     shader : new ShaderPass(RGBShiftShader),
     scale : 0.0015,
     enabled : false,
-    toggle : () => {
-      RGBShift.enabled = !RGBShift.enabled;
-      applyPostProcessing();
-    }
 }
 var dotShader = {
     shader : new ShaderPass(DotScreenShader),
     scale : 4.0,
     enabled : false,
-    toggle : () => {
-      dotShader.enabled = !dotShader.enabled;
-      applyPostProcessing();
-    }
 }
 
   
 }
 
-// shaderpark definitions
+// shaderpark preset shaders
 let shaders = [
   'default', 
   'og', 
@@ -161,7 +151,7 @@ let effects = [
 ];
 
 // visualizer and control states
-var state = {
+let state = {
     mouse : new Vector3(),
     currMouse : new Vector3(),
     size : 0.0,
@@ -178,30 +168,44 @@ var state = {
     autorotateSpeed : 0.2,
 }
 
-// HOW MANY SONGS ARE IN RESOURCES
-const SONG_COUNT = 8;
-let isDefault = false;
+let presetCount = localStorage.getItem('userPresetCount');
+if (presetCount === null) {
+  presetCount = 0;
+}
+
+console.log(presetCount)
+
+// preset states
+const DEFAULT_PRESET_COUNT = 8;
+window.presetManager = {
+  userPresetCount : +presetCount,
+  currentPreset : 0, // default scene
+  currentlyLoadingPreset : false,
+}
+
+console.log('User preset count: ' + (presetManager.userPresetCount));
+console.log('TOTAL PRESETS: ' + (DEFAULT_PRESET_COUNT + presetManager.userPresetCount));
 
 ////////////////
 /// THREE JS ///
 ////////////////
 
 window.onload = function(){ 
-  let os = getOS();
-  
-  cookieData = getCookie('visualizer');
-
-  eventSetup();
 
   createScene();
 
-  loadVisualizer(true); // true selects from array
+  loadVisualizer(true); // true selects default from the array
 
   applyPostProcessing();
 
   initTweakpane();
 
+  eventSetup();
+
   loadDefaultPreset();
+
+  if (getOS() !== ('Windows' || 'Mac OS' || 'Linux')) 
+    switchControls(); // call switchControls if not on a PC
     
   animate();
 }
@@ -227,6 +231,18 @@ function getOS() {
   }
 
   return os;
+}
+
+function switchControls() {
+  // force onscreen controls to show
+  visualizer.render_tooltips = false;
+  window.pane.hidden = true;
+  const buttonsContainer = document.querySelector('.ui_buttons');
+  buttonsContainer.style.display = buttonsContainer.style.display == 'flex' ? 'none' : 'flex';
+  const bgContainer = document.querySelector('.ui_bgs');
+  bgContainer.style.display = bgContainer.style.display == 'block' ? 'none' : 'block';
+  let hideUIbutton = document.getElementById('ui_hide');
+  hideUIbutton.style.display = 'none';
 }
 
 function applyPostProcessing() {
@@ -262,6 +278,8 @@ function loadVisualizer(choosing_from_array, using_cookie_data) {
               shaders[shader_index] + " selected" : 
               "Shader successfully generated");
 
+  } else {
+    visualizer.shader = using_cookie_data;
   }
 
   // MESHES
@@ -299,6 +317,7 @@ function loadVisualizer(choosing_from_array, using_cookie_data) {
 }
 
 function loadSkybox(texturePath) {
+    visualizer.path = texturePath;
     const loader = new CubeTextureLoader();
     loader.setPath(texturePath);
     let texture = loader.load( [
@@ -321,9 +340,6 @@ function loadSkybox(texturePath) {
 }
 
 function loadAudio(event, filePath) {
-  /////////////
-  /// AUDIO ///
-  /////////////
   const previousVolume = audio?.getVolume();
 
   // pause previous audio
@@ -332,52 +348,48 @@ function loadAudio(event, filePath) {
 
   // create an Audio source
   audio = new Audio( listener );
-  reversedAudio = new Audio( listener )
-
-  // temporarily disable controls
-  visualizer.clickable = false;
-  visualizer.intersected = false;
-
-  if (filePath) {
-    console.log("file path found")
-    // select from presets
-    const audioLoader = new AudioLoader();
-    audioLoader.load( filePath, function( buffer ) {
-      audio.setBuffer(buffer);
-      audio.setLoop(false);
-      audio.setVolume(previousVolume || 1.0);
-
-      // Reverse the audio buffer
-      const reversedBuffer = reverseAudioBuffer(buffer, listener.context);
-
-      // Set the reversed buffer to the reversed audio
-      reversedAudio.setBuffer(reversedBuffer);
-      reversedAudio.setLoop(false);
-      reversedAudio.setVolume(previousVolume || 1.0);
-    });
-  } else {
-    // file upload event
-    fileInput.addEventListener( 'change', function( event ) {
-      var reader = new FileReader();
-      reader.addEventListener( 'load', function ( event ) {
-        audioBuffer = event.target.result;
-        listener.context.decodeAudioData( audioBuffer, function ( buffer ) {
-          audio.setBuffer( buffer );
-          reversedAudio.setBuffer(reverseAudioBuffer(buffer));
-        });     
-      });
-      audioFile = event.target.files[0];
-      reader.readAsArrayBuffer( audioFile );
-    });
-    fileInput.click();
-    audio.autoplay = true;
-  }
-
-  // create an AudioAnalyser, passing in the sound and desired fftSize
-  visualizer.analyser = new AudioAnalyser( audio, 32 );
-
-  // set audio to same volume as before to match anim size
   audio.setVolume(previousVolume || 1.0);
+  audio.setLoop(false);
+
+  // create reversed audio source
+  reversedAudio = new Audio( listener )
+  reversedAudio.setVolume(previousVolume || 1.0);
+  reversedAudio.setLoop(false);
+
+  visualizer.analyser = new AudioAnalyser( audio, 64 );   // create an AudioAnalyser, passing in the sound and desired fftSize
+
+  const audioLoader = new AudioLoader();
+  
+  audioLoader.load( 
+      filePath, 
+      
+      function( buffer ) {
+        audio.setBuffer(buffer);
+  
+        reversedAudio.setBuffer(reverseAudioBuffer(buffer, listener.context));
+      }, 
+      function ( xhr ) {
+        //console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+      }, 
+      function ( err ) {
+        console.log('No audio found - Choosing a file');
+        // uploading a file
+        fileInput.addEventListener( 'change', function( event ) {
+          var reader = new FileReader();
+          reader.addEventListener( 'load', function ( event ) {
+            audioBuffer = event.target.result;
+            audio.context.decodeAudioData( audioBuffer, function ( buffer ) {
+              audio.setBuffer( buffer );
+              reversedAudio.setBuffer(reverseAudioBuffer(buffer, audio.context));
+            });     
+          });
+          audioFile = event.target.files[0];
+          reader.readAsArrayBuffer( audioFile );
+        });
+        fileInput.click();
+        audio.autoplay = true;
+      }
+  );
 }
 
 function reverseAudioBuffer(buffer, audioContext) {
@@ -400,6 +412,12 @@ function reverseAudioBuffer(buffer, audioContext) {
 
 function initTweakpane() {
   const pane = new Pane();
+  pane.on('change', function () { // make save button show up if changed
+    if (presetManager.currentPreset < DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 && !presetManager.currentlyLoadingPreset) {
+      presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 
+      handleUI(presetManager.currentPreset); 
+    }
+  });
 
     // music ui
     // const musicui = pane.addFolder({title: 'Music'})
@@ -412,70 +430,30 @@ function initTweakpane() {
 
     // visualizer ui
     const vizui = pane.addFolder({title: 'Visualizer'}); 
-    vizui.addButton({
-      title: 'GENERATE',
-      label: 'Scene Generation'
-    }).on('click', () => {
-      loadVisualizer(false);
-    })
-    vizui.addButton({
-      title: 'SELECT',
-      label: 'Scene Generation'
-    }).on('click', () => {
-      loadVisualizer(true);
-    }) 
     vizui.addBinding(state, 'minimizing_factor', {min:0.01, max:2.00, label:'MOD 1'});
     vizui.addBinding(state, 'power_factor', {min:1.0, max:10.0, label:'MOD 2'});
     vizui.addBinding(state, 'base_speed', {min: 0.01, max: 0.9, label: 'Base Speed'})
     vizui.addBinding(state, 'easing_speed', {min: 0.01, max: .9, label: 'Easing Speed' })
     vizui.addBinding(visualizer, 'scale', {min: 1, max: 200.0, label: 'scale'});
     vizui.addBinding(window, 'TIME_MULTIPLIER', {min: 0.1, max: 100, label: 'Time'});
-    vizui.addBinding(state, 'autorotateSpeed', {min: 0.1, max: 10.0, label: 'Rotation Speed'}).on('change', (ev) => {
-      controls.autoRotateSpeed = state.autorotateSpeed;
-    })
-    vizui.addButton({
-      title: 'Toggle',
-      label: 'Auto Rotate',
-    }).on('click', (ev) => {
-      controls.autoRotate = !controls.autoRotate;
-    })
+    vizui.addBinding(controls, 'autoRotate', {label: 'Auto Rotate'});
+    vizui.addBinding(controls, 'autoRotateSpeed', {min: 0.1, max: 10.0, label: 'Rotation Speed'})
 
     // bloom ui
     const bloomui = pane.addFolder({title: 'Bloom Settings'}).on('change', () => {
-      bloom.shader = new UnrealBloomPass(
-        new Vector2(window.innerWidth, window.innerHeight),
-        bloomSettings.strength,
-        bloomSettings.radius,
-        bloomSettings.threshold
-      )
-      applyPostProcessing();
+      updateBloom();
     })
     bloomui.addBinding(bloomSettings, 'strength', {min: 0.0, max: 10.0, label: 'Strength' });
     bloomui.addBinding(bloomSettings, 'radius', {min: -10.0, max: 10.0, label: 'Radius' });
     bloomui.addBinding(bloomSettings, 'threshold', {min: 0.0, max: 10.0, label: 'Threshold' });
-    bloomui.addButton({
-      title: 'Toggle',
-      label: 'Bloom Effect',   // optional
-    }).on('click', () => {
-      bloom.toggle();
-    });
+    bloomui.addBinding(bloom, 'enabled', {label: 'Enable Bloom'})
 
-    const ppui = pane.addFolder({title: 'Post Processing Effects'});
-    ppui.addBinding(toneMapping, 'exposure').on('change', (ev) => {
-      renderer.toneMappingExposure = toneMapping.exposure;
-    })
-    ppui.addButton({
-      title: 'Toggle',
-      label: 'RGBShift Effect',   // optional
-    }).on('click', () => {
-      RGBShift.toggle();
+    const ppui = pane.addFolder({title: 'Post Processing Effects'}).on('change', () => {
+      applyPostProcessing();
     });
-    ppui.addButton({
-      title: 'Toggle',
-      label: 'Dot Shader Effect',   // optional
-    }).on('click', () => {
-      dotShader.toggle();
-    });
+    ppui.addBinding(renderer, 'toneMappingExposure', {min: -500.0, max: 500.0, label: 'Exposure' });
+    ppui.addBinding(RGBShift, 'enabled', {label: 'RGBShift Shader'})
+    ppui.addBinding(dotShader, 'enabled', {label: 'Enable Dot Shader'})
 
     // camera ui
     const camui = pane.addFolder({title: 'Camera Settings'}).on('change', (ev) => {
@@ -492,10 +470,19 @@ function initTweakpane() {
     window.pane.hidden = true;
 }
 
+function updateBloom() {
+  bloom.shader = new UnrealBloomPass(
+    new Vector2(window.innerWidth, window.innerHeight),
+    bloomSettings.strength,
+    bloomSettings.radius,
+    bloomSettings.threshold
+  )
+  applyPostProcessing();
+}
+
 function createScene() {
   // initialize scene
   scene = new Scene();
-  //scene.background = new TextureLoader().load('..resources/skybox.png');
 
   // initialize camera
   camera = new PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 100000 );
@@ -510,10 +497,10 @@ function createScene() {
   renderer.setSize( window.innerWidth, window.innerHeight );
   renderer.setPixelRatio( window.devicePixelRatio );
   renderer.setClearColor( new Color(1, 1, 1), 0);
-  document.body.appendChild( renderer.domElement );
-  renderer.toneMapping = CineonToneMapping;
+  renderer.toneMapping = ReinhardToneMapping;
   renderer.toneMappingexposure = toneMapping.exposure;
   renderer.outputColorSpace = SRGBColorSpace;
+  document.body.appendChild( renderer.domElement );
 
   stats = new Stats();
   document.body.appendChild(stats.domElement);
@@ -532,10 +519,10 @@ function createScene() {
   img.src = '../resources/middlemouse.png';
   const div = document.createElement('div')
   div.appendChild(img)
-  divContainer = new CSS2DObject(div);
-  divContainer.scale.set(0.2,0.2,0.2)
-  divContainer.position.set(0,2,0)
-  scene.add(divContainer)
+  tooltipUI = new CSS2DObject(div);
+  tooltipUI.scale.set(0.2,0.2,0.2)
+  tooltipUI.position.set(0,2,0)
+  scene.add(tooltipUI)
 
   // initialize clock
   clock = new Clock();
@@ -554,19 +541,23 @@ function createScene() {
 }
 
 function loadDefaultPreset() {
-  isDefault = true;
-  let songPath = `../resources/song0/`;
-  loadSkybox(songPath);
-  loadAudio(null, songPath + '0.mp3');
+  presetManager.currentPreset = 0;
+  let presetPath = `../resources/preset0/`;
+  loadSkybox(presetPath);
+  loadAudio(null, presetPath + '0.mp3'); // blank audio file
 }
 
-function chooseFromPresets() {
-    // select a random skybox/song preset
-    let randomNumber =  Math.ceil(Math.random() * SONG_COUNT);
-    document.getElementById(`song${randomNumber}`).click();
+function getRandomPreset() {
+    // select a random preset
+    let randomNumber = Math.ceil(Math.random() * (DEFAULT_PRESET_COUNT + presetManager.userPresetCount));
+    while (localStorage.getItem('preset'+randomNumber) === null && randomNumber > DEFAULT_PRESET_COUNT) {
+      randomNumber = Math.ceil(Math.random() * (DEFAULT_PRESET_COUNT + presetManager.userPresetCount));
+    }
+    document.getElementById(`preset${randomNumber}`).click();
     audio.autoplay = true;
-    audio.play();
-    isDefault = false;
+    presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1;
+    loadVisualizer(false, false);
+    handleUI(presetManager.currentPreset);
 }
 
 function ScreenShake() {
@@ -666,43 +657,43 @@ function eventSetup() {
 
     // control audio playback rate and volume
     if (visualizer.controllingAudio) {
-      const playbackRate = state.currMouse.x * 2;
+      // const playbackRate = state.currMouse.x * 2;
     
-      // Get the audio context from the listener
-      const audioContext = audio.listener.context;
+      // // Get the audio context from the listener
+      // const audioContext = audio.listener.context;
     
-      if (playbackRate < 0) {
-        // Set the playback rate for reversed audio
-        reversedAudio.setPlaybackRate(Math.abs(playbackRate)); 
+      // if (playbackRate < 0) {
+      //   // Set the playback rate for reversed audio
+      //   reversedAudio.setPlaybackRate(Math.abs(playbackRate)); 
     
-        // If reversed audio is not playing, start it from the corresponding position
-        if (!reversedAudio.isPlaying) {
-          // Stop the normal audio
-          audio.stop(); 
+      //   // If reversed audio is not playing, start it from the corresponding position
+      //   if (!reversedAudio.isPlaying) {
+      //     // Stop the normal audio
+      //     audio.stop(); 
     
-          // Set the offset for reversed audio
-          reversedAudio.offset = reversedAudio.buffer.duration - audio.context.currentTime;
+      //     // Set the offset for reversed audio
+      //     reversedAudio.offset = reversedAudio.buffer.duration - audio.context.currentTime;
     
-          // Start reversed audio from calculated position
-          reversedAudio.play();
-          reversedAudio.isPlaying = true;
-        }
-      } else {
-        // Set the playback rate for normal audio
-        audio.setPlaybackRate(playbackRate); 
+      //     // Start reversed audio from calculated position
+      //     reversedAudio.play();
+      //     reversedAudio.isPlaying = true;
+      //   }
+      // } else {
+      //   // Set the playback rate for normal audio
+      //   audio.setPlaybackRate(playbackRate); 
     
-        // If normal audio is not playing, start it from the corresponding position
-        if (!audio.isPlaying) {
-          // Stop the reversed audio
-          reversedAudio.stop(); 
+      //   // If normal audio is not playing, start it from the corresponding position
+      //   if (!audio.isPlaying) {
+      //     // Stop the reversed audio
+      //     reversedAudio.stop(); 
     
-          // Set the offset for normal audio
-          audio.offset = reversedAudio.context.currentTime;
+      //     // Set the offset for normal audio
+      //     audio.offset = reversedAudio.context.currentTime;
     
-          // Start normal audio from calculated position
-          audio.play();
-        }
-      }
+      //     // Start normal audio from calculated position
+      //     audio.play();
+      //   }
+      // }
     
     
 
@@ -714,6 +705,8 @@ function eventSetup() {
         visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y));
         audio.setVolume(Math.max(0.0, Math.min(1.0, audio.getVolume() + state.currMouse.y/5))); //state.currMouse.y * .2
     }
+    tooltipUI.visible = false;
+    visualizer.clickable && visualizer.render_tooltips && (tooltipUI.visible = true);
   });
   
   window.addEventListener( 'pointerdown', (event) => {
@@ -731,6 +724,7 @@ function eventSetup() {
 
     if (event.button == 2) {
       visualizer.render_tooltips = true;
+      tooltipUI.visible = true;
       window.pane.hidden = true;
       const buttonsContainer = document.querySelector('.ui_buttons');
       buttonsContainer.style.display = buttonsContainer.style.display == 'flex' ? 'none' : 'flex';
@@ -753,7 +747,7 @@ function eventSetup() {
     }
     
     if (event.button == 0) {
-      if (isDefault) chooseFromPresets();
+      if (presetManager.currentPreset == 0) getRandomPreset();
       if (!audio.isPlaying) audio.play(); else audio.pause();
     }
 
@@ -776,51 +770,47 @@ function eventSetup() {
   // generate button
   document.getElementById('ui_regenerate').addEventListener('click', function() {
     loadVisualizer(false);
+    presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1;
+    handleUI(presetManager.currentPreset);
   });
 
-  // Delete button
+  // Delete button - ONLY WORKS FOR USER CREATED PRESETS
   let deleteButton = document.getElementById('ui_delete');
-  deleteButton.style.display = cookieData ? 'block' : 'none';
+  deleteButton.style.display = 'none';
   deleteButton.addEventListener('click', function() {
-    const userConsent = confirm("Are you sure? (YOU CAN ONLY HAVE ONE STATE SAVED)");
+    const userConsent = confirm("Are you sure you would like to delete this preset?");
     if (userConsent) {
-      restoreButton.style.display = 'none';
-      cookieData = undefined;
-      restoreButton.style.display = cookieData ? 'block' : 'none';
-      saveButton.style.display = !cookieData ? 'block' : 'none';
-      deleteButton.style.display = cookieData ? 'block' : 'none';
+      localStorage.removeItem('preset'+presetManager.currentPreset);
+      const buttonElement = document.getElementById(`preset${presetManager.currentPreset}`);
+      if (buttonElement) {
+        buttonElement.closest('.ui.ui_bg').remove();
+      }
+      presetManager.userPresetCount--;
+      getRandomPreset();
     }
   });
 
   // Save button
   let saveButton = document.getElementById('ui_save');
-  saveButton.style.display = !cookieData ? 'block' : 'none';
+  saveButton.style.display = 'none';
   saveButton.addEventListener('click', function() {
     const userConsent = confirm("Do you allow cookies to store your data?");
     if (userConsent) {
       try {
-        saveShaderToCookie(visualizer.shader);
-        alert("Cookie has been saved.");
-        console.log("Cookie saved: " + JSON.stringify(visualizer.shader));
-        cookieData = getCookie('visualizer');
-        restoreButton.style.display = cookieData ? 'block' : 'none';
-        saveButton.style.display = !cookieData ? 'block' : 'none';
-        deleteButton.style.display = cookieData ? 'block' : 'none';
+        presetManager.userPresetCount++;
+        let jsonString = bundleSceneIntoJSON();
+        localStorage.setItem('preset'+presetManager.currentPreset, jsonString);
+        localStorage.setItem('userPresetCount', presetManager.userPresetCount);
+        createPresetButton(presetManager.currentPreset, true);
+        alert("Cookie has been saved.  " + 'preset'+presetManager.currentPreset);
+        handleUI(presetManager.currentPreset);
       } catch (error) {
+          presetManager.userPresetCount--;
           alert("Error Saving Cookie! " + error.message);
       }
     } else {
       alert("Got it. No Cookie will be saved.");
     }
-    this.blur(); // Removes focus from the button
-  });
-    
-  // Restore button - Loads cookie and only show if it exists
-  let restoreButton = document.getElementById('ui_restore');
-  restoreButton.style.display = cookieData ? 'block' : 'none';
-  restoreButton.addEventListener('click', function() {
-    restoreShaderFromCookie(); 
-    loadVisualizer(false, true)
     this.blur(); // Removes focus from the button
   });
 
@@ -831,9 +821,9 @@ function eventSetup() {
 
   // hide ui button
   document.getElementById('ui_hide').addEventListener('click', function() {
-    visualizer.render_tooltips = !visualizer.render_tooltips;
+    visualizer.render_tooltips = false;
     window.pane.hidden = true;
-    stats.dom.style.display = stats.dom.style.display == 'none' ? 'block' : 'none';
+    stats.dom.style.display = 'none';
     const buttonsContainer = document.querySelector('.ui_buttons');
     buttonsContainer.style.display = buttonsContainer.style.display == 'flex' ? 'none' : 'flex';
     const bgContainer = document.querySelector('.ui_bgs');
@@ -846,37 +836,144 @@ function eventSetup() {
     stats.dom.style.display = stats.dom.style.display == 'none' ? 'block' : 'none';
   });
 
-  // scene buttons
-  function createSceneButton(index) {
-    return `  
+  // copy button
+  document.getElementById('ui_copy').addEventListener('click', function() {
+    let jsonString = bundleSceneIntoJSON();
+    navigator.clipboard.writeText(jsonString)
+    .then(() => {
+      console.log("JSON copied to clipboard");
+      alert('Scene copied to clipboard, you can now share it with others!');
+    })
+    .catch(err => {
+      console.error("Failed to copy JSON: ", err);
+      alert('Error copying to clipboard: ' + err);
+    });
+  });
+
+  // preset button
+  document.getElementById('ui_load').addEventListener('click', function() {
+    let text = prompt("Enter your copied code: ");
+    if (text !== null) {
+      // Do something with the entered text
+      loadPreset(text);
+    }
+    presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1;
+    handleUI(presetManager.currentPreset);
+  });
+
+  // scene preset buttons
+  for (let presetNumber = 1; presetNumber <= (DEFAULT_PRESET_COUNT + presetManager.userPresetCount); presetNumber++) {   // make one for each preset
+    createPresetButton(presetNumber);
+  }
+}
+
+function bundleSceneIntoJSON() {
+  controls.saveState();// save camera position
+    
+  let data = {
+    shader: visualizer.shader,
+    path: visualizer.path,
+    settings: window.pane.exportState(),
+    controls: controls,
+  }
+  
+  return JSON.stringify(data);
+}
+
+function handleUI (presetNumber) {
+  if (presetNumber <= DEFAULT_PRESET_COUNT) {
+    document.getElementById('ui_save').style.display = 'none';
+    document.getElementById('ui_delete').style.display = 'none';
+  } else {
+    document.getElementById('ui_save').style.display = localStorage.getItem('preset'+presetNumber) === null ? 'block' : 'none';
+    document.getElementById('ui_delete').style.display = localStorage.getItem('preset'+presetNumber) !== null ? 'block' : 'none';
+  }
+}
+
+function createPresetButton(presetNumber, isNewButton) {
+  // if this cookie has been deleted do not make a button
+  if (presetNumber > DEFAULT_PRESET_COUNT && 
+    !isNewButton && 
+    localStorage.getItem('preset'+presetNumber) === null) 
+  {
+    return;
+  }
+
+  document.querySelector('.ui_bgs').insertAdjacentHTML('beforeend', createDivSceneButton(presetNumber)); // chatgpt
+  document.getElementById(`preset${presetNumber}`).addEventListener('click', () => {
+    if (presetNumber <= DEFAULT_PRESET_COUNT) { // is default preset
+      fetch(`../resources/preset${presetNumber}/preset.json`)       // fetch the preset files
+        .then(response => response.json())
+        .then(data => {
+          const jsonString = JSON.stringify(data);
+          loadPreset(jsonString);
+        })
+        .catch((error) => {
+          console.error('Error loading preset:', error);
+        });
+    } else {
+      let data = localStorage.getItem('preset'+presetNumber);
+      loadPreset(data);       // load a user preset
+    }
+
+
+    console.log(`Loaded Preset: ${presetNumber}`);
+
+    presetManager.currentPreset = presetNumber;
+
+    handleUI(presetManager.currentPreset);
+  });
+
+  function createDivSceneButton(presetNumber) {
+    const userPresetIcon = 'scene_grad08'
+    
+    // template presets
+    if (!(presetNumber > DEFAULT_PRESET_COUNT)) {
+      return `  
       <div class="ui ui_bg">
-        <button class="ui_bg_item scene_grad0${index}" id="song${index}"></button>
-        <div class="ui_bg_label" id="song${index}Label">${index}</div>
+        <button class="ui_bg_item scene_grad05" id="preset${presetNumber}"></button>
+        <div class="ui_bg_label" id="preset${presetNumber}Label">${presetNumber}</div>
         <div style="clear:both;"></div>
       </div> 
-      `;    
+      `;   
+    } 
+
+    // user presets
+    if (!(presetNumber > DEFAULT_PRESET_COUNT + presetManager.userPresetCount)) {
+      return `  
+      <div class="ui ui_bg">
+        <button class="ui_bg_item ${userPresetIcon}" id="preset${presetNumber}"></button>
+        <div class="ui_bg_label" id="preset${presetNumber}Label">${presetNumber}</div>
+        <div style="clear:both;"></div>
+      </div> 
+      `;  
+    }
+  
+    // create a button to restore this scene
+    return `  
+      <div class="ui ui_bg">
+        <button class="ui_bg_item ${userPresetIcon}" id="preset${presetNumber}"></button>
+        <div class="ui_bg_label" id="preset${presetNumber}Label">${presetNumber}</div>
+        <div style="clear:both;"></div>
+      </div> 
+      `;   
   }
-  for (let i = 1; i <= SONG_COUNT; i++) {   // make one for each song/scene
-    document.querySelector('.ui_bgs').insertAdjacentHTML('beforeend', createSceneButton(i)); // chatgpt
-    document.getElementById(`song${i}`).addEventListener('click', function() {
+}
 
-      let songPath = `../resources/song${i}/`;
+function loadPreset(jsonInput) {
+  presetManager.currentlyLoadingPreset = true;
+  let preset = JSON.parse(jsonInput);
+  loadSkybox(preset.path);
+  loadVisualizer(false, preset.shader);
+  window.pane.importState(preset.settings);
+  updateBloom();
+  if (typeof audioFile === 'undefined') loadAudio(null, preset.path + '.mp3');
+  audio.autoplay = true;
+  presetManager.currentlyLoadingPreset = false;
+}
 
-      // set skybox texture based on button
-      loadSkybox(songPath);
-
-      // load default audio file based on button
-      if (typeof audioFile === 'undefined') {
-        loadAudio(null, songPath + `${i}.mp3`);
-      } 
-
-      // log
-      console.log(`Loaded Preset: ${i}`);
-
-      // autoplay audio if not first load
-      audio.autoplay = true;
-    });
-  }
+function growVisualizer() {
+  state.size += .03*(1-state.easing_speed+0.01);
 }
 
 function animate() {
@@ -937,7 +1034,7 @@ function animate() {
 
   // ONLY CHECK PIXEL IF IT INTERSECTS
 
-  if (controls.enabled) {
+  if (controls.enabled && getOS() === ('Windows' || 'Mac OS' || 'Linux')) {
     let raycaster = new Raycaster();
     raycaster.setFromCamera(state.currMouse, camera);
     let intersects = raycaster.intersectObject(visualizer.mesh);
@@ -956,30 +1053,23 @@ function animate() {
       renderer.readRenderTargetPixels(renderTarget, x, y, 1, 1, pixelBuffer);
   
       // Check if pixel belongs to shader (e.g., non-zero alpha)
-      if (pixelBuffer[3] > 0) {
-        // Grow sphere
-        state.size += .03*(1-state.easing_speed+0.01)
+      if (pixelBuffer[3] > 0) { 
+        growVisualizer();
         visualizer.clickable = true;
-        divContainer.visible = true;
       } else {
         visualizer.clickable = false;
-        divContainer.visible = false;
       }
     } else {
       visualizer.intersected = false;
       visualizer.clickable = false;
-      divContainer.visible = false;
     }
   }
   
   stats.update();
   //screenShake.update(camera);
   controls.update();
-  if (visualizer.render_tooltips) {
-    labelRenderer.render(scene, camera);
-  }
+  if (visualizer.render_tooltips) labelRenderer.render(scene, camera);
   composer.render(scene, camera);
 }
-
 
 		

@@ -42,7 +42,7 @@ abbr:hover:before {
   z-index: 3;
   bottom: 10px;
   width: 100%;
-  display: flex; 
+  display: none; /*hide ui at start*/
   flex-direction: row;
   justify-content: center;
   align-items: center;
@@ -51,7 +51,7 @@ abbr:hover:before {
 
 .ui_button_small{
   z-index:4;
-  width:80px;height:64px;
+  width:60px;height:40px;
   margin-left:3px;margin-right:3px;margin-bottom:14px;
   overflow: hidden;
   color:#fff;font-size:16px;font-weight: 800;
@@ -64,7 +64,7 @@ abbr:hover:before {
 }
 
 .ui_button_small:hover {
-  background-color: rgba(116, 116, 116, 0.2); /* Darker background when hovering */
+  background-color: rgba(211, 211, 211, 0.644); /* Darker background when hovering */
   border-color: #3d4400; /* Darker border when hovering */
 }
 
@@ -79,7 +79,7 @@ abbr:hover:before {
   position: absolute;z-index:3;
   left:6px;width:140px;height:auto;
   pointer-events: none;
-  display: block; /* Hide the buttons initially */
+  display: none; /* Hide the buttons initially */
 }
   .ui_bg{
     width: auto;height: auto;
@@ -131,22 +131,6 @@ abbr:hover:before {
 .scene_grad07{background-image: linear-gradient(180deg, #91b8cd 0%, #aebc62 50%, #2c2d44 100%);}
 .scene_grad08{background-image: linear-gradient(180deg, #e3d0a6 0%, #e193e0 50%, #53356c 100%);}
 
-.scene_skybox01{
-  background: url('img/skyboxes/skybox_space1/sky1thumb.jpg') no-repeat;
-  background-size: 100%;
-}
-.scene_skybox02{
-  background: url('img/skyboxes/skybox_space2/sky2thumb.jpg') no-repeat;
-  background-size: 100%;
-}
-.scene_skybox03{
-  background: url('img/skyboxes/skybox_space3/sky3thumb.jpg') no-repeat;
-  background-size: 100%;
-}
-.scene_sky01{
-  background: url('img/skyboxes/skybox_sky1/thumb01.jpg') no-repeat;
-  background-size: 100%;
-}
 /* slider override  ----------------------------------------------------------- */
   .noUi-horizontal {
     height: 8px;

@@ -506,7 +506,81 @@ return shaderCode;
 
     return skyboxShader;
   }
-  else if (shader == 'generated') {
+  else if (shader == 'generated-draft3') {
+      // Define parameters and randomization logic
+const shapeChoice = Math.random() > 0.5 ? 'sphere' : 'boxFrame';
+const colorChoices = [
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+  `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+];
+const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+
+const randomRotateFactor = Math.random() * 2 + 1;
+const randomMetal = Math.random() * 0.5 + 0.3;
+const randomShine = Math.random() * 0.5 + 0.3;
+const randomBlend = Math.random() * 0.2 + 0.1;
+
+// Randomly vary the grid count to control density
+const gridCount = Math.floor(Math.random() * 2) + 2; // Random count between 2 and 3
+
+const extraShapeChoice = Math.random();
+let extraShape;
+if (extraShapeChoice < 0.33) {
+  extraShape = 'sphere(size / 3);';
+} else if (extraShapeChoice < 0.66) {
+  extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+} else {
+  extraShape = `grid(${gridCount}, size * 2.5, max(0.02, size * 0.01));`;  // Grid with randomized count
+}
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  let size = input();
+  let pointerDown = input();
+
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal} * size);
+  shine(${randomShine});
+
+  // Main shape
+  switch (${Math.floor(Math.random() * 4)}) {
+    case 0:
+      sphere(size / 2 - pointerDown * 0.05);
+      break;
+    case 1:
+      boxFrame(vec3(size - pointerDown * 0.05), max(0.05, size * 0.05));
+      break;
+    case 2:
+      torus(size * 0.6 - pointerDown * 0.05, size * 0.15);
+      break;
+    case 3:
+      grid(${gridCount}, size * 2.5, max(0.02, size * 0.01));  // Grid with randomized count
+      break;
+  }
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend});
+
+  // Extra shape
+  ${extraShape}
+`;
+
+return shaderCode;
+
+  }
+  else if (shader == 'generated-draft2') {
     // Define parameters and randomization logic
 // Random parameters for ShaderPark
 const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
@@ -582,7 +656,683 @@ return shaderCode;
 
 
 
+  } else if (shader == 'generated-draft4') {
+    // Define parameters and randomization logic
+const shapeChoice = Math.random() > 0.5 ? 'sphere' : 'boxFrame';
+const colorChoices = [
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+  `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+];
+const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+
+const randomRotateFactor = Math.random() * 2 + 1;
+const randomMetal = Math.random() * 0.5 + 0.3;
+const randomShine = Math.random() * 0.5 + 0.3;
+const randomBlend = Math.random() * 0.2 + 0.1;
+
+// Randomly vary the grid count and size for more flexibility
+const gridCount = Math.floor(Math.random() * 2) + 1; // Random count between 1 and 2
+
+const extraShapeChoice = Math.random();
+let extraShape;
+if (extraShapeChoice < 0.33) {
+  extraShape = 'sphere(size / 3);';
+} else if (extraShapeChoice < 0.66) {
+  extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+} else {
+  // Adjust grid parameters using size
+  extraShape = `grid(${gridCount}, size * 4, max(0.001, size * 0.003));`;  // Larger grid with controlled rod thickness
+}
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  let size = input();
+  let pointerDown = input();
+
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal} * size);
+  shine(${randomShine});
+
+  // Main shape
+  switch (${Math.floor(Math.random() * 4)}) {
+    case 0:
+      sphere(size / 2 - pointerDown * 0.05);
+      break;
+    case 1:
+      boxFrame(vec3(size - pointerDown * 0.05), max(0.05, size * 0.05));
+      break;
+    case 2:
+      torus(size * 0.6 - pointerDown * 0.05, size * 0.15);
+      break;
+    case 3:
+      grid(${gridCount}, size * 3, max(0.002, size * 0.003));  // Larger grid with more spacing
+      break;
   }
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend});
+
+  // Extra shape
+  ${extraShape}
+`;
+
+return shaderCode;
+
+
+  } else
+    if (shader == 'generated-good-draft') {
+      // Define parameters and randomization logic
+      const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+      const numShapes = Math.floor(Math.random() * 4) + 2;  // Random number of shapes between 2 and 5
+      let shapes = [];
+    
+      // Randomly decide how many shapes and which shapes to include
+      for (let i = 0; i < numShapes; i++) {
+        const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+        const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+        shapes.push({ shape: shapeChoice, sizeFactor });
+      }
+    
+      // Color choices
+      const colorChoices = [
+        `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+        `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+        `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+      ];
+      const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+    
+      const randomRotateFactor = Math.random() * 2 + 1;
+      const randomMetal = Math.random() * 0.5 + 0.3;
+      const randomShine = Math.random() * 0.5 + 0.3;
+      const randomBlend = Math.random() * 0.2 + 0.1;
+    
+      // Randomly vary the grid count and size for more flexibility
+      const gridCount = Math.floor(Math.random() * 2) + 1; // Random count between 1 and 2
+    
+      const extraShapeChoice = Math.random();
+      let extraShape;
+      if (extraShapeChoice < 0.33) {
+        extraShape = 'sphere(size / 3);';
+      } else if (extraShapeChoice < 0.66) {
+        extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+      } else {
+        extraShape = `grid(${gridCount}, size * 4, max(0.001, size * 0.003));`;  // Larger grid with controlled rod thickness
+      }
+    
+      // Randomize setMaxIterations and setStepSize for raymarching
+      const maxIterations = Math.floor(Math.random() * 200); // Random iterations between 5000 and 15000
+      const stepSize = Math.random() * 0.9; // Random step size between 0.01 and 0.05
+    
+      // Generate ShaderPark code string deterministically
+      const shaderCode = `
+        setMaxIterations(${maxIterations});
+        setStepSize(${stepSize});
+        
+        let size = input();
+        let pointerDown = input();
+        time *= .1;
+        rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+        rotateX(mouse.y * 5 * PI / 2 + time);
+    
+        // Set color
+        ${chosenColor}
+    
+        // Add rotations
+        rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+        rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+        rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+    
+        // Apply metal and shine
+        metal(${randomMetal} * size);
+        shine(${randomShine});
+    
+        // Render the shapes
+        ${shapes.map(({ shape, sizeFactor }) => {
+          const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+    
+          switch (shape) {
+            case 'sphere':
+              return `sphere(${adjustedSize} / 2);`;
+            case 'boxFrame':
+              return `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+            case 'torus':
+              return `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+            case 'cylinder':
+              return `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+            case 'grid':
+              return `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+            default:
+              return '';
+          }
+        }).join('\n')}
+    
+        // Apply blending
+        blend(nsin(time * size) * ${randomBlend});
+    
+        // Extra shape
+        ${extraShape}
+      `;
+    
+      return shaderCode;
+    } else if (shader == 'generated-draft new') {
+      // Define parameters and randomization logic
+const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
+let shapes = [];
+
+// Randomly decide how many shapes and which shapes to include
+for (let i = 0; i < numShapes; i++) {
+  const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+  const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+  shapes.push({ shape: shapeChoice, sizeFactor });
+}
+
+// Color choices
+const colorChoices = [
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+  `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+  `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+];
+const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+
+const randomRotateFactor = Math.random() * 2 + 1;
+const randomMetal = Math.random() * 0.5 + 0.3;
+const randomShine = Math.random() * 0.5 + 0.3;
+const randomBlend = Math.random() * 0.2 + 0.1;
+
+// Randomly vary the grid count and size for more flexibility
+const gridCount = Math.floor(Math.random() * 2) + 1; // Random count between 1 and 2
+
+const extraShapeChoice = Math.random();
+let extraShape;
+if (extraShapeChoice < 0.33) {
+  extraShape = 'sphere(size / 3);';
+} else if (extraShapeChoice < 0.66) {
+  extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+} else {
+  extraShape = `grid(${gridCount}, size * 4, max(0.001, size * 0.003));`; // Larger grid with controlled rod thickness
+}
+
+// Randomize setMaxIterations and setStepSize for raymarching
+const maxIterations = Math.floor(Math.random() * 200 + 1); // Random iterations between 5000 and 15000
+const stepSize = Math.random() * 0.9 + 0.01; // Random step size between 0.01 and 0.05
+
+// Randomize time multiplier
+const timeMultiplier = Math.random() * 0.4 + 0.1; // Random multiplier between 0.1 and 0.5
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  setMaxIterations(${maxIterations});
+  setStepSize(${stepSize});
+  
+  let size = input();
+  let pointerDown = input();
+  time *= ${timeMultiplier};
+  
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal} * size);
+  shine(${randomShine});
+
+  // Render the shapes
+  ${shapes.map(({ shape, sizeFactor }) => {
+    const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+
+    switch (shape) {
+      case 'sphere':
+        return `sphere(${adjustedSize} / 2);`;
+      case 'boxFrame':
+        return `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+      case 'torus':
+        return `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+      case 'cylinder':
+        return `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+      case 'grid':
+        return `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+      default:
+        return '';
+    }
+  }).join('\n')}
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend});
+
+  // Extra shape
+  ${extraShape}
+`;
+
+return shaderCode;
+
+    }
+    else if (shader == 'generated-draft-good2') {
+      
+        const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+        const numShapes = Math.floor(Math.random() * 4) + 2;  // Random number of shapes between 2 and 5
+        let shapes = [];
+      
+        for (let i = 0; i < numShapes; i++) {
+          const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+          const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor
+          shapes.push({ shape: shapeChoice, sizeFactor });
+        }
+      
+        // Functions to return random values each time they are called
+        const randomRotateFactor = function() {
+          return Math.random() * 2 + 1;
+        };
+      
+        const randomMetal = function() {
+          return Math.random() * 0.5 + 0.3;
+        };
+      
+        const randomShine = function() {
+          return Math.random() * 0.5 + 0.3;
+        };
+      
+        const randomBlend = function() {
+          return Math.random() * 0.2 + 0.1;
+        };
+      
+        const noiseFactor = function() {
+          return Math.random();
+        };
+      
+        const expansionFactor = function() {
+          return Math.random() * 0.5;
+        };
+      
+        const timeFactor = function() {
+          return Math.random() * 0.9 + 0.1;
+        };
+      
+        // Randomize colors with or without getRayDirection
+        const fullGetRayProbability = 0.1; // 10%
+        const twoGetRayProbability = 0.2; // 20%
+        const oneGetRayProbability = 0.3; // 30%
+        const constantProbability = 1 - (fullGetRayProbability + twoGetRayProbability + oneGetRayProbability); // Remaining for pure constants
+      
+        // Helper function to get more natural random color components
+        function getRandomColorComponent() {
+          return Math.random(); // A fully random component between 0 and 1
+        }
+      
+        // Generate color based on probabilities
+        let chosenColor;
+        const randomValue = Math.random();
+      
+        if (randomValue < fullGetRayProbability) {
+          // Full `getRayDirection` (10%)
+          chosenColor = `color(getRayDirection().x, getRayDirection().y, getRayDirection().z);`;
+        } else if (randomValue < fullGetRayProbability + twoGetRayProbability) {
+          // Two `getRayDirection` components (20%)
+          const axes = ['x', 'y', 'z'];
+          const [axis1, axis2] = axes.sort(() => Math.random() - 0.5).slice(0, 2); // Randomly select 2 axes
+          chosenColor = `color(getRayDirection().${axis1}, getRayDirection().${axis2}, ${getRandomColorComponent()});`;
+        } else if (randomValue < fullGetRayProbability + twoGetRayProbability + oneGetRayProbability) {
+          // One `getRayDirection` component (30%)
+          const axis = ['x', 'y', 'z'][Math.floor(Math.random() * 3)]; // Randomly select 1 axis
+          chosenColor = `color(getRayDirection().${axis}, ${getRandomColorComponent()}, ${getRandomColorComponent()});`;
+        } else {
+          // Pure constants (remaining probability)
+          chosenColor = `color(${getRandomColorComponent()}, ${getRandomColorComponent()}, ${getRandomColorComponent()});`;
+        }
+      
+        // Generate ShaderPark code string deterministically
+        const shaderCode = `
+          setMaxIterations(${Math.floor(Math.random() * 100)});
+          setStepSize(${Math.random() * 0.9});
+      
+          let size = input();
+          let pointerDown = input();
+          time *= ${timeFactor()}; // Randomize time multiplier between 0.1 and 1
+          rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+          rotateX(mouse.y * 5 * PI / 2 + time);
+      
+          // Set color
+          ${chosenColor}
+      
+          // Get the current coordinate space once and store in s
+          let s = getSpace();
+      
+          // Add rotations
+          rotateX(getRayDirection().y * ${randomRotateFactor()} + time);
+          rotateY(getRayDirection().x * ${randomRotateFactor()} + time);
+          rotateZ(getRayDirection().z * ${randomRotateFactor()} + time);
+      
+          // Apply metal and shine
+          metal(${randomMetal()} * size);
+          shine(${randomShine()});
+      
+          // Render the shapes
+          ${shapes.map(({ shape, sizeFactor }) => {
+            const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+            const n = `noise(s * ${noiseFactor()})`; // ShaderPark noise function based on the space
+      
+            switch (shape) {
+              case 'sphere':
+                return `expand(${n} * ${expansionFactor()}); sphere(${adjustedSize} / 2);`;
+              case 'boxFrame':
+                return `expand(${n} * ${expansionFactor()}); boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+              case 'torus':
+                return `expand(${n} * ${expansionFactor()}); torus(${adjustedSize}, ${adjustedSize} / 4);`;
+              case 'cylinder':
+                return `expand(${n} * ${expansionFactor()}); cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+              case 'grid':
+                return `expand(${n} * ${expansionFactor()}); grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+              default:
+                return '';
+            }
+          }).join('\n')}
+      
+          // Apply blending
+          blend(nsin(time * size) * ${randomBlend()});
+      
+          // Extra shape
+          sphere(size / 3);
+        `;
+      
+        return shaderCode;
+      
+    } else if (shader == 'generated-dd') {
+        // Define parameters and randomization logic
+const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
+let shapes = [];
+
+// Randomly decide how many shapes and which shapes to include
+for (let i = 0; i < numShapes; i++) {
+  const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+  const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+  shapes.push({ shape: shapeChoice, sizeFactor });
+}
+
+// Functions to return random values each time they are called
+const randomRotateFactor = () => Math.random() * 2 + 1;
+const randomMetal = () => Math.random() * 0.5 + 0.3;
+const randomShine = () => Math.random() * 0.5 + 0.3;
+const randomBlend = () => Math.random() * 0.2 + 0.1;
+const noiseFactor = () => Math.random() * 2;
+const expansionFactor = () => Math.random() * 0.5;
+const timeFactor = () => Math.random() * 0.9 + 0.1;
+
+// Randomize colors with or without getRayDirection
+const fullGetRayProbability = 0.1; // 10%
+const twoGetRayProbability = 0.2; // 20%
+const oneGetRayProbability = 0.3; // 30%
+const constantProbability = 1 - (fullGetRayProbability + twoGetRayProbability + oneGetRayProbability); // Remaining for pure constants
+
+// Helper function to get more natural random color components
+function getRandomColorComponent() {
+  return Math.random(); // A fully random component between 0 and 1
+}
+
+// Generate color based on probabilities
+let chosenColor;
+const randomValue = Math.random();
+
+if (randomValue < fullGetRayProbability) {
+  // Full `getRayDirection` (10%)
+  chosenColor = `color(getRayDirection().x, getRayDirection().y, getRayDirection().z);`;
+} else if (randomValue < fullGetRayProbability + twoGetRayProbability) {
+  // Two `getRayDirection` components (20%)
+  const axes = ['x', 'y', 'z'];
+  const [axis1, axis2] = axes.sort(() => Math.random() - 0.5).slice(0, 2); // Randomly select 2 axes
+  chosenColor = `color(getRayDirection().${axis1}, getRayDirection().${axis2}, ${getRandomColorComponent()});`;
+} else if (randomValue < fullGetRayProbability + twoGetRayProbability + oneGetRayProbability) {
+  // One `getRayDirection` component (30%)
+  const axis = ['x', 'y', 'z'][Math.floor(Math.random() * 3)]; // Randomly select 1 axis
+  chosenColor = `color(getRayDirection().${axis}, ${getRandomColorComponent()}, ${getRandomColorComponent()});`;
+} else {
+  // Pure constants (remaining probability)
+  chosenColor = `color(${getRandomColorComponent()}, ${getRandomColorComponent()}, ${getRandomColorComponent()});`;
+}
+
+// Randomly vary the grid count and size for more flexibility
+const gridCount = Math.floor(Math.random() * 2) + 1; // Random count between 1 and 2
+
+const extraShapeChoice = Math.random();
+let extraShape;
+if (extraShapeChoice < 0.33) {
+  extraShape = 'sphere(size / 3);';
+} else if (extraShapeChoice < 0.66) {
+  extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+} else {
+  extraShape = `grid(${gridCount}, size * 4, max(0.001, size * 0.003));`; // Larger grid with controlled rod thickness
+}
+
+// Randomize setMaxIterations and setStepSize for raymarching
+const maxIterations = Math.floor(Math.random() * 200); // Random iterations between 5000 and 15000
+const stepSize = Math.random() * 0.9; // Random step size between 0.01 and 0.05
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  setMaxIterations(${maxIterations});
+  setStepSize(${stepSize});
+
+  let size = input();
+  let pointerDown = input();
+  time *= ${timeFactor()}; // Randomize time multiplier between 0.1 and 1
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Get the current coordinate space once and store in s
+  let s = getSpace();
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor()} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor()} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor()} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal()} * size);
+  shine(${randomShine()});
+
+  // Render the shapes
+  ${shapes.map(({ shape, sizeFactor }) => {
+    const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+    const n = `noise(s * ${noiseFactor()})`; // ShaderPark noise function based on the space
+    const applyNoise = Math.random() < 0.5; // Randomly decide whether to apply noise to this shape
+
+    switch (shape) {
+      case 'sphere':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); sphere(${adjustedSize} / 2);`
+          : `sphere(${adjustedSize} / 2);`;
+      case 'boxFrame':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`
+          : `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+      case 'torus':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); torus(${adjustedSize}, ${adjustedSize} / 4);`
+          : `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+      case 'cylinder':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); cylinder(${adjustedSize} / 4, ${adjustedSize});`
+          : `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+      case 'grid':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`
+          : `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+      default:
+        return '';
+    }
+  }).join('\n')}
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend()});
+
+  // Extra shape
+  ${extraShape}
+`;
+
+return shaderCode;
+    } else if (shader == 'generated') {
+      
+      // Define parameters and randomization logic
+const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
+let shapes = [];
+
+// Randomly decide how many shapes and which shapes to include
+for (let i = 0; i < numShapes; i++) {
+  const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+  const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+  shapes.push({ shape: shapeChoice, sizeFactor });
+}
+
+// Functions to return random values each time they are called
+const randomRotateFactor = () => Math.random() * 2 + 1;
+const randomMetal = () => Math.random() * 0.5 + 0.3;
+const randomShine = () => Math.random() * 0.5 + 0.3;
+const randomBlend = () => Math.random() * 0.2 + 0.1;
+const noiseFactor = () => Math.random() * 2;
+const expansionFactor = () => Math.random() * 0.5;
+const timeFactor = () => Math.random() * 0.9 + 0.1;
+
+// Randomize colors with or without getRayDirection
+const fullGetRayProbability = 0.1; // 10%
+const twoGetRayProbability = 0.2; // 20%
+const oneGetRayProbability = 0.3; // 30%
+const constantProbability = 1 - (fullGetRayProbability + twoGetRayProbability + oneGetRayProbability); // Remaining for pure constants
+
+// Helper function to get more natural random color components
+function getRandomColorComponent() {
+  return Math.random(); // A fully random component between 0 and 1
+}
+
+// Generate color based on probabilities
+let chosenColor;
+const randomValue = Math.random();
+
+if (randomValue < fullGetRayProbability) {
+  // Full `getRayDirection` (10%)
+  chosenColor = `color(getRayDirection().x, getRayDirection().y, getRayDirection().z);`;
+} else if (randomValue < fullGetRayProbability + twoGetRayProbability) {
+  // Two `getRayDirection` components (20%)
+  const axes = ['x', 'y', 'z'];
+  const [axis1, axis2] = axes.sort(() => Math.random() - 0.5).slice(0, 2); // Randomly select 2 axes
+  chosenColor = `color(getRayDirection().${axis1}, getRayDirection().${axis2}, ${getRandomColorComponent()});`;
+} else if (randomValue < fullGetRayProbability + twoGetRayProbability + oneGetRayProbability) {
+  // One `getRayDirection` component (30%)
+  const axis = ['x', 'y', 'z'][Math.floor(Math.random() * 3)]; // Randomly select 1 axis
+  chosenColor = `color(getRayDirection().${axis}, ${getRandomColorComponent()}, ${getRandomColorComponent()});`;
+} else {
+  // Pure constants (remaining probability)
+  chosenColor = `color(${getRandomColorComponent()}, ${getRandomColorComponent()}, ${getRandomColorComponent()});`;
+}
+
+// Randomly vary the grid count and size for more flexibility
+const gridCount = Math.floor(Math.random() * 2) + 0.99; // Random count between 1 and 2
+
+const extraShapeChoice = Math.random();
+let extraShape;
+if (extraShapeChoice < 0.33) {
+  extraShape = 'sphere(size / 3);';
+} else if (extraShapeChoice < 0.66) {
+  extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+} else {
+  extraShape = `grid(${gridCount}, size * 4, max(0.001, size * 0.003));`; // Larger grid with controlled rod thickness
+}
+
+// Randomize setMaxIterations and setStepSize for raymarching
+const maxIterations = 50;//Math.floor(Math.random() * 200 + 10); // Random iterations between 10 and 200
+const stepSize = 0.9;//Math.random() * 0.89 + 0.1; // Random step size between 0.1 and 0.99
+
+// Generate ShaderPark code string deterministically
+const shaderCode = `
+  setMaxIterations(${maxIterations});
+  setStepSize(${stepSize});
+
+  let size = input();
+  let pointerDown = input();
+  time *= ${timeFactor()}; // Randomize time multiplier between 0.1 and 1
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  ${chosenColor}
+
+  // Get the current coordinate space once and store in s
+  let s = getSpace();
+
+  // Add rotations
+  rotateX(getRayDirection().y * ${randomRotateFactor()} + time);
+  rotateY(getRayDirection().x * ${randomRotateFactor()} + time);
+  rotateZ(getRayDirection().z * ${randomRotateFactor()} + time);
+
+  // Apply metal and shine
+  metal(${randomMetal()} * size);
+  shine(${randomShine()});
+
+  // Render the shapes
+  ${shapes.map(({ shape, sizeFactor }) => {
+    const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+    const n = `noise(s * ${noiseFactor()})`; // ShaderPark noise function based on the space
+    const applyNoise = Math.random() < 0.5; // Randomly decide whether to apply noise to this shape
+
+    switch (shape) {
+      case 'sphere':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); sphere(${adjustedSize} / 2);`
+          : `sphere(${adjustedSize} / 2);`;
+      case 'boxFrame':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`
+          : `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+      case 'torus':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); torus(${adjustedSize}, ${adjustedSize} / 4);`
+          : `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+      case 'cylinder':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); cylinder(${adjustedSize} / 4, ${adjustedSize});`
+          : `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+      case 'grid':
+        return applyNoise
+          ? `expand(${n} * ${expansionFactor()}); grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`
+          : `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+      default:
+        return '';
+    }
+  }).join('\n')}
+
+  // Apply blending
+  blend(nsin(time * size) * ${randomBlend()});
+
+  // Extra shape
+  ${extraShape}
+`;
+  
+return shaderCode;
+
+    }
+      
 }
 
 //

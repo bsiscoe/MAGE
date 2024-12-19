@@ -1,0 +1,37 @@
+
+setMaxIterations(165);
+  setStepSize(0.8837714820987953);
+
+  let size = input();
+  let pointerDown = input();
+  time *= 0.15463854529180016; // Randomize time multiplier between 0.1 and 1
+  rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+  rotateX(mouse.y * 5 * PI / 2 + time);
+
+  // Set color
+  color(0.19249460280220076, 0.5576177869377099, 0.7849475701611119);
+
+  // Get the current coordinate space once and store in s
+  let s = getSpace();
+
+  // Add rotations
+  rotateX(getRayDirection().y * 1.232054212463134 + time);
+  rotateY(getRayDirection().x * 2.665891355844892 + time);
+  rotateZ(getRayDirection().z * 2.8773980669463746 + time);
+
+  // Apply metal and shine
+  metal(0.460119739490588 * size);
+  shine(0.6764701712545977);
+
+  // Render the shapes
+  expand(noise(s * 0.9146765182924388) * 0.14303243876988103); grid(4, size * 0.9325070216439598 - pointerDown * 0.05 / 3, 0.01 * size * 0.9325070216439598 - pointerDown * 0.05);
+torus(size * 0.5976329089309298 - pointerDown * 0.05, size * 0.5976329089309298 - pointerDown * 0.05 / 4);
+sphere(size * 0.9202297878180244 - pointerDown * 0.05 / 2);
+torus(size * 0.6451489969302785 - pointerDown * 0.05, size * 0.6451489969302785 - pointerDown * 0.05 / 4);
+
+  // Apply blending
+  blend(nsin(time * size) * 0.2644707607479799);
+
+  // Extra shape
+  sphere(size / 3);
+
