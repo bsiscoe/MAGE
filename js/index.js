@@ -67,7 +67,7 @@ import Stats from 'three/addons/libs/stats.module'
 ///GLOBAL VARIABLES///
 //////////////////////
 {
-window['TIME_MULTIPLIER'] = 1.0;
+window.TIME_MULTIPLIER = 1.0;
 var screenShake = ScreenShake();
 var scene;
 var renderer;
@@ -166,32 +166,22 @@ let state = {
     easing_speed : 0.6,
     rotate_toggle : true,
     autorotateSpeed : 0.2,
+    camTilt : 0.0,
 }
-
-let presetCount = localStorage.getItem('userPresetCount');
-if (presetCount === null) {
-  presetCount = 0;
-}
-
-console.log(presetCount)
 
 // preset states
 const DEFAULT_PRESET_COUNT = 8;
 window.presetManager = {
-  userPresetCount : +presetCount,
+  userPresetCount : +(localStorage.getItem('userPresetCount') || 0),
   currentPreset : 0, // default scene
   currentlyLoadingPreset : false,
 }
-
-console.log('User preset count: ' + (presetManager.userPresetCount));
-console.log('TOTAL PRESETS: ' + (DEFAULT_PRESET_COUNT + presetManager.userPresetCount));
 
 ////////////////
 /// THREE JS ///
 ////////////////
 
-window.onload = function(){ 
-
+window.addEventListener('load', () => {
   createScene();
 
   loadVisualizer(true); // true selects default from the array
@@ -207,10 +197,10 @@ window.onload = function(){
   if (getOS() !== ('Windows' || 'Mac OS' || 'Linux')) 
     switchControls(); // call switchControls if not on a PC
     
-  animate();
-}
+  render();
+});
 
-function getOS() {
+const getOS = () => {
   const userAgent = window.navigator.userAgent,
       platform = window.navigator?.userAgentData?.platform || window.navigator.platform,
       macosPlatforms = ['macOS', 'Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'],
@@ -233,7 +223,7 @@ function getOS() {
   return os;
 }
 
-function switchControls() {
+const switchControls = () => {
   // force onscreen controls to show
   visualizer.render_tooltips = false;
   window.pane.hidden = true;
@@ -245,7 +235,7 @@ function switchControls() {
   hideUIbutton.style.display = 'none';
 }
 
-function applyPostProcessing() {
+const applyPostProcessing = () => {
   // clean slate
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -261,9 +251,9 @@ function applyPostProcessing() {
   // composer.addPass(outputPass);
 }
 
-function loadVisualizer(choosing_from_array, using_cookie_data) {
+const loadVisualizer = (choosing_from_array, using_cookie_data) => {
 
-  console.log("Loading shader... ")
+  console.log("Loading visualizer... ")
 
   // remove old mesh
   scene.remove( visualizer.mesh );
@@ -282,7 +272,10 @@ function loadVisualizer(choosing_from_array, using_cookie_data) {
     visualizer.shader = using_cookie_data;
   }
 
-  // MESHES
+  createMeshes();
+}
+
+const createMeshes = () => {
     // add shader to geometry
     var geometry  = new SphereGeometry(160, 60, 60);
     visualizer.mesh = createSculptureWithGeometry(geometry, visualizer.shader, () => {
@@ -314,9 +307,11 @@ function loadVisualizer(choosing_from_array, using_cookie_data) {
       }
     })
     rtScene.add(targetMesh);
+
+    console.log("Visualizer Loaded!")
 }
 
-function loadSkybox(texturePath) {
+const loadSkybox = (texturePath) => {
     visualizer.path = texturePath;
     const loader = new CubeTextureLoader();
     loader.setPath(texturePath);
@@ -339,7 +334,7 @@ function loadSkybox(texturePath) {
     // scene.add(skybox);
 }
 
-function loadAudio(event, filePath) {
+const loadAudio = (event, filePath) => {
   const previousVolume = audio?.getVolume();
 
   // pause previous audio
@@ -392,7 +387,7 @@ function loadAudio(event, filePath) {
   );
 }
 
-function reverseAudioBuffer(buffer, audioContext) {
+const reverseAudioBuffer = (buffer, audioContext) => {
   const reversedBuffer = audioContext.createBuffer(
     buffer.numberOfChannels,
     buffer.length,
@@ -410,7 +405,7 @@ function reverseAudioBuffer(buffer, audioContext) {
   return reversedBuffer;
 }
 
-function initTweakpane() {
+const initTweakpane = () => {
   const pane = new Pane();
   pane.on('change', function () { // make save button show up if changed
     if (presetManager.currentPreset < DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 && !presetManager.currentlyLoadingPreset) {
@@ -460,6 +455,12 @@ function initTweakpane() {
       camera.updateProjectionMatrix();
     });
     camui.addBinding(camera, 'fov', {min: 1, max: 359, label: 'FOV'});
+    camui.addBinding(state, 'camTilt', {min: 0.0, max: .15, label: 'Camera Orientation'}).on('change', () => {
+      // const x = Math.cos(state.camTilt) * camera.up.x - Math.sin(state.camTilt) * camera.up.y;
+      // const y = Math.sin(state.camTilt) * camera.up.x + Math.cos(state.camTilt) * camera.up.y;
+      // camera.up.set(x, y, camera.up.z);       // set up
+      // camera.lookAt(0, 0, 0);        // now call lookAt
+    })
     camui.addButton({
       title: 'Reset',
       label: 'Camera Position'
@@ -470,7 +471,7 @@ function initTweakpane() {
     window.pane.hidden = true;
 }
 
-function updateBloom() {
+const updateBloom = () => {
   bloom.shader = new UnrealBloomPass(
     new Vector2(window.innerWidth, window.innerHeight),
     bloomSettings.strength,
@@ -480,7 +481,7 @@ function updateBloom() {
   applyPostProcessing();
 }
 
-function createScene() {
+const createScene = () => {
   // initialize scene
   scene = new Scene();
 
@@ -497,7 +498,7 @@ function createScene() {
   renderer.setSize( window.innerWidth, window.innerHeight );
   renderer.setPixelRatio( window.devicePixelRatio );
   renderer.setClearColor( new Color(1, 1, 1), 0);
-  renderer.toneMapping = ReinhardToneMapping;
+  renderer.toneMapping = CineonToneMapping;
   renderer.toneMappingexposure = toneMapping.exposure;
   renderer.outputColorSpace = SRGBColorSpace;
   document.body.appendChild( renderer.domElement );
@@ -540,14 +541,14 @@ function createScene() {
   controls.saveState();
 }
 
-function loadDefaultPreset() {
+const loadDefaultPreset = () => {
   presetManager.currentPreset = 0;
   let presetPath = `../resources/preset0/`;
   loadSkybox(presetPath);
   loadAudio(null, presetPath + '0.mp3'); // blank audio file
 }
 
-function getRandomPreset() {
+const getRandomPreset = () => {
     // select a random preset
     let randomNumber = Math.ceil(Math.random() * (DEFAULT_PRESET_COUNT + presetManager.userPresetCount));
     while (localStorage.getItem('preset'+randomNumber) === null && randomNumber > DEFAULT_PRESET_COUNT) {
@@ -637,10 +638,10 @@ function ScreenShake() {
 }
       
 function shake() {
-      	//screenShake.shake( camera, new Vector3(0, -5, 0), 100 );
+      	screenShake.shake( camera, new Vector3(5, 0, 0),5 );
 }
 
-function eventSetup() {
+const eventSetup = () => {
 
   // resizing window event
   window.addEventListener( 'resize', function () {
@@ -867,20 +868,22 @@ function eventSetup() {
   }
 }
 
-function bundleSceneIntoJSON() {
+const bundleSceneIntoJSON = () => {
   controls.saveState();// save camera position
-    
+  const { target0, position0, zoom0 } = controls;
+  const state = { target0, position0, zoom0 };
   let data = {
     shader: visualizer.shader,
     path: visualizer.path,
     settings: window.pane.exportState(),
-    controls: controls,
+    controls: state,
+    camera: camera
   }
-  
+  console.log(data.controls)
   return JSON.stringify(data);
 }
 
-function handleUI (presetNumber) {
+const handleUI = (presetNumber) => {
   if (presetNumber <= DEFAULT_PRESET_COUNT) {
     document.getElementById('ui_save').style.display = 'none';
     document.getElementById('ui_delete').style.display = 'none';
@@ -890,7 +893,7 @@ function handleUI (presetNumber) {
   }
 }
 
-function createPresetButton(presetNumber, isNewButton) {
+const createPresetButton = (presetNumber, isNewButton) => {
   // if this cookie has been deleted do not make a button
   if (presetNumber > DEFAULT_PRESET_COUNT && 
     !isNewButton && 
@@ -917,7 +920,7 @@ function createPresetButton(presetNumber, isNewButton) {
     }
 
 
-    console.log(`Loaded Preset: ${presetNumber}`);
+    console.log(`Loading Preset: ${presetNumber}`);
 
     presetManager.currentPreset = presetNumber;
 
@@ -960,11 +963,12 @@ function createPresetButton(presetNumber, isNewButton) {
   }
 }
 
-function loadPreset(jsonInput) {
+const loadPreset = (jsonInput) => {
   presetManager.currentlyLoadingPreset = true;
   let preset = JSON.parse(jsonInput);
   loadSkybox(preset.path);
   loadVisualizer(false, preset.shader);
+  loadControls(preset.controls);
   window.pane.importState(preset.settings);
   updateBloom();
   if (typeof audioFile === 'undefined') loadAudio(null, preset.path + '.mp3');
@@ -972,12 +976,22 @@ function loadPreset(jsonInput) {
   presetManager.currentlyLoadingPreset = false;
 }
 
-function growVisualizer() {
+const loadControls = (presetControls) => {
+  if (presetControls) {
+    const { target0, position0, zoom0 } = presetControls;
+    controls.target0.copy(target0);
+    controls.position0.copy(position0);
+    controls.zoom0 = zoom0;
+    controls.reset();
+  }
+};
+
+const growVisualizer = () => {
   state.size += .03*(1-state.easing_speed+0.01);
 }
 
-function animate() {
-  requestAnimationFrame( animate );
+const render = () => {
+  requestAnimationFrame( render );
   
   // alternates flow of time to prevent animation bugs
   if ((state.time < 180) && timeIncreasing) { // 3 minutes
@@ -1028,7 +1042,7 @@ function animate() {
   let val = Math.sin(state.time)*(state.size)*0.02+0.1;
   state.currAudio = bass_input + val *state.base_speed + clock.getDelta() * state.base_speed;
   state.size = (1-state.easing_speed) * state.currAudio + state.easing_speed * state.size + state.volume_multiplier*.01;
-  if (bass_input > 0.03) {
+  if (bass_input > 0.3) {
     shake();
   }
 
@@ -1064,12 +1078,27 @@ function animate() {
       visualizer.clickable = false;
     }
   }
-  
+
   stats.update();
-  //screenShake.update(camera);
+  screenShake.update(camera);
   controls.update();
   if (visualizer.render_tooltips) labelRenderer.render(scene, camera);
   composer.render(scene, camera);
 }
 
+// Initialize the up vector
+let up = new THREE.Vector3(0, 1, 0);
+const speed = 0.5; // Rotation speed
+
+function updatecamTilt(time) {
+    const angle = time * speed;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    // Rotate the up vector around the z-axis
+    
+
+    // Apply the updated up vector to a camera or object if needed
+    // camera.up.copy(up).normalize(); // Uncomment if used with a camera
+}
 		
