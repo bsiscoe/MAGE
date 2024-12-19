@@ -456,10 +456,10 @@ const initTweakpane = () => {
     });
     camui.addBinding(camera, 'fov', {min: 1, max: 359, label: 'FOV'});
     camui.addBinding(state, 'camTilt', {min: 0.0, max: .15, label: 'Camera Orientation'}).on('change', () => {
-      // const x = Math.cos(state.camTilt) * camera.up.x - Math.sin(state.camTilt) * camera.up.y;
-      // const y = Math.sin(state.camTilt) * camera.up.x + Math.cos(state.camTilt) * camera.up.y;
-      // camera.up.set(x, y, camera.up.z);       // set up
-      // camera.lookAt(0, 0, 0);        // now call lookAt
+      const x = Math.cos(state.camTilt) * camera.up.x - Math.sin(state.camTilt) * camera.up.y;
+      const y = Math.sin(state.camTilt) * camera.up.x + Math.cos(state.camTilt) * camera.up.y;
+      camera.up.set(x, y, camera.up.z);       // set up
+      camera.lookAt(0, 0, 0);        // now call lookAt
     })
     camui.addButton({
       title: 'Reset',
@@ -638,7 +638,7 @@ function ScreenShake() {
 }
       
 function shake() {
-      	screenShake.shake( camera, new Vector3(5, 0, 0),5 );
+      	//screenShake.shake( camera, new Vector3(0, -5, 0),5 );
 }
 
 const eventSetup = () => {
@@ -727,6 +727,7 @@ const eventSetup = () => {
       visualizer.render_tooltips = true;
       tooltipUI.visible = true;
       window.pane.hidden = true;
+      stats.dom.style.display = 'none';
       const buttonsContainer = document.querySelector('.ui_buttons');
       buttonsContainer.style.display = buttonsContainer.style.display == 'flex' ? 'none' : 'flex';
       const bgContainer = document.querySelector('.ui_bgs');
@@ -748,8 +749,17 @@ const eventSetup = () => {
     }
     
     if (event.button == 0) {
-      if (presetManager.currentPreset == 0) getRandomPreset();
       if (!audio.isPlaying) audio.play(); else audio.pause();
+      if (presetManager.currentPreset == 0) {
+        visualizer.render_tooltips = true;
+        tooltipUI.visible = true;
+        window.pane.hidden = true;
+        const buttonsContainer = document.querySelector('.ui_buttons');
+        buttonsContainer.style.display = buttonsContainer.style.display == 'flex' ? 'none' : 'flex';
+        const bgContainer = document.querySelector('.ui_bgs');
+        bgContainer.style.display = bgContainer.style.display == 'block' ? 'none' : 'block';
+        getRandomPreset();
+      }
     }
 
     if (event.button == 1) {
@@ -1085,20 +1095,3 @@ const render = () => {
   if (visualizer.render_tooltips) labelRenderer.render(scene, camera);
   composer.render(scene, camera);
 }
-
-// Initialize the up vector
-let up = new THREE.Vector3(0, 1, 0);
-const speed = 0.5; // Rotation speed
-
-function updatecamTilt(time) {
-    const angle = time * speed;
-    const cosA = Math.cos(angle);
-    const sinA = Math.sin(angle);
-
-    // Rotate the up vector around the z-axis
-    
-
-    // Apply the updated up vector to a camera or object if needed
-    // camera.up.copy(up).normalize(); // Uncomment if used with a camera
-}
-		
