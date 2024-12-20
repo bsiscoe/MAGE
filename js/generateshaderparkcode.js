@@ -15,7 +15,10 @@ export function generateshaderparkcode(shader)  {
       rotateY(mouse.x * -2 * PI / 2 * (1+nsin(time)))
       rotateX(mouse.y * 2 * PI / 2 * (1+nsin(time)))
       metal(.5*size)
-      color(normalize(getRayDirection())+.2)
+      let rayDir = normalize(getRayDirection())
+      let clampedColor = vec3(max(0.0, min(rayDir.x + 0.2, 100.0)), max(0.0, min(rayDir.y + 0.2, 100.0)), max(0.0, min(rayDir.z + 0.2, 100.0)))
+      color(clampedColor)
+
       rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
 	  rotateX(cos((getRayDirection().x*16*nsin(time)+size)))
 	  rotateZ(ncos((getRayDirection().z*4*cos(time)+size)))

@@ -2,6 +2,8 @@
 
 // jittering animations
 // shaders can be less twisty when grid and ALSO
+// pointerDown tweakpane tie in VERY IMPORTANT
+// tweakpane skybox folder
 // make more presets
 // add more threejs effects
 // finalize video demo
@@ -140,7 +142,6 @@ let state = {
 
 // preset states
 const DEFAULT_PRESET_COUNT = 8;
-const SKYBOX_COUNT = 9;
 window.presetManager = {
   userPresetCount : +(localStorage.getItem('userPresetCount') || 0),
   currentPreset : 0, // default scene
@@ -274,7 +275,7 @@ const randomizeSettings = () => {
   effects.toneMapping.method = Math.ceil(Math.random() * 7);
   effects.toneMapping.exposure = 1.0;
   effects.RGBShift.enabled = Math.random() > 0.5 ? true : false;
-  effects.sobelShader.enabled = Math.random() > 0.7 ? true : false;
+  effects.sobelShader.enabled = Math.random() > 0.77 ? true : false;
   effects.luminosityShader.enabled = Math.random() > 0.75 ? true : false;
 
   window.pane.refresh();
@@ -282,50 +283,46 @@ const randomizeSettings = () => {
 }
 
 const initTweakpane = () => {
-    const pane = new Pane();
-    pane.on('change', function () { // make save button show up if changed
-      if (presetManager.currentPreset < DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 && !presetManager.currentlyLoadingPreset) {
-        presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 
-        handleUI(presetManager.currentPreset); 
-      }
-    });
-
-    pane.addButton({
-      title: 'Randomize',
-      label: '???'
-    }).on('click', () => {
-      randomizeSettings();
-      window.pane.refresh();
-    });
-
-    // get skybox paths
-    let skyboxOptions = {};
-    for (let i = 1; i <= SKYBOX_COUNT; i++) {
-      skyboxOptions[`${i}`] = `../resources/preset${i}/`;
+  const pane = new Pane();
+  pane.on('change', function () { // make save button show up if changed
+    if (presetManager.currentPreset < DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 && !presetManager.currentlyLoadingPreset) {
+      presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1 
+      handleUI(presetManager.currentPreset); 
     }
+  });
 
-    // add skybox paths to tweakpane
-    pane.addBinding(visualizer, 'path', {
-      label: 'Skybox',
-      options: skyboxOptions,
-    }).on('change', () => {
-      loadSkybox(visualizer.path);
-    });
+  // pane.addBinding(visualizer, 'path', {
+  //   label: 'Skybox',
+  //   options: {
+  //      1 : '../resources/preset1/',
+  //      2 : '../resources/preset2/',
+  //      3 : '../resources/preset3/',
+  //      4 : '../resources/preset4/',
+  //      5 : '../resources/preset5/',
+  //      6 : '../resources/preset6/',
+  //      7 : '../resources/preset7/',
+  //      8 : '../resources/preset8/',
+  //   }
+  // }).on('change', () => {
+  //   loadSkybox(visualizer.path);
+  // });
+
+    // music ui
+    // const musicui = pane.addFolder({title: 'Music'})
+    // pane.registerPlugin(AudioPlayerPlugin);
+    // musicui.addBlade({
+    //   view: 'audio-player',
+    //   source: 'music.wav',
+    //   label: 'track'
+    // });
 
     // visualizer ui
-    const firstTab = pane.addTab({
-      pages: [
-        {title: 'Scene Settings'},
-        {title: 'Post Processing'},
-      ],
-    });
-
     {
-      const vizui = firstTab.pages[0]; 
+      const vizui = pane.addFolder({title: 'Visualizer'}); 
       
       vizui.addBinding(state, 'minimizing_factor', {min:0.01, max:2.00, label:'MOD 1'});
       vizui.addBinding(state, 'power_factor', {min:1.0, max:10.0, label:'MOD 2'});
-      vizui.addBinding(state, 'pointerDownMultiplier', {min: 0.0, max: 1.0, label: 'MOD 3'});
+      //vizui.addBinding(state, 'pointerDownMultiplier', {min: 0.0, max: 1.0, label: 'MOD 3'});
       vizui.addBinding(state, 'base_speed', {min: 0.01, max: 0.9, label: 'Base Speed'})
       vizui.addBinding(state, 'easing_speed', {min: 0.01, max: .9, label: 'Easing Speed' })
       vizui.addBinding(visualizer, 'scale', {min: 1, max: 200.0, label: 'scale'});
@@ -336,7 +333,7 @@ const initTweakpane = () => {
 
     // bloom ui
     {
-      const bloomui = firstTab.pages[1].addFolder({title: 'Bloom Settings'}).on('change', () => {
+      const bloomui = pane.addFolder({title: 'Bloom Settings'}).on('change', () => {
         composer = effects.applyPostProcessing(scene, renderer, camera)
       })
       bloomui.addBinding(effects.bloom.settings, 'strength', {min: 0.0, max: 10.0, label: 'Strength' });
@@ -347,7 +344,7 @@ const initTweakpane = () => {
 
     // post processing ui
     {
-      const ppui = firstTab.pages[1].addFolder({title: 'Post Processing Effects'}).on('change', () => {
+      const ppui = pane.addFolder({title: 'Post Processing Effects'}).on('change', () => {
         composer = effects.applyPostProcessing(scene, renderer, camera);
       });
       ppui.addBinding(effects.toneMapping, 'method', {
@@ -357,10 +354,6 @@ const initTweakpane = () => {
            Cineon : CineonToneMapping,
            Filmic : ACESFilmicToneMapping,
            NoTone : NoToneMapping,
-           Reinhard : ReinhardToneMapping,
-           AGX : AgXToneMapping,
-           Neutral : NeutralToneMapping,
-           //Custom : CustomToneMapping,
         }
       }).on('change', () => {
         effects.outputPass.enabled = true; 
@@ -372,16 +365,10 @@ const initTweakpane = () => {
       ppui.addBinding(effects.RGBShift, 'enabled', {label: 'RGBShift'})
       ppui.addBinding(effects.dotShader, 'enabled', {label: 'Dot FX'});
       ppui.addBinding(effects.luminosityShader, 'enabled', {label: 'Luminosity'});
-      ppui.addBinding(effects.afterImagePass, 'enabled', {label: 'After Image'});
       ppui.addBinding(effects.sobelShader, 'enabled', {label: 'Sobel'}).on('change', () => {
         effects.sobelShader.shader.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
         effects.sobelShader.shader.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
       });
-      ppui.addBinding(effects.glitchPass, 'enabled', {label: "Glitch"});
-      ppui.addBinding(effects.colorifyShader, 'enabled', {label: "Colorify"});
-      ppui.addBinding(effects.halftonePass, 'enabled', {label: 'Halftone'});
-      ppui.addBinding(effects.gammaCorrectionShader, 'enabled', {label: 'Gamma Correction'});
-      ppui.addBinding(effects.kaleidoShader, 'enabled', {label: 'Kaleid'});
       ppui.addBinding(effects.outputPass, 'enabled', {label: 'Output Pass'});
     }
 
@@ -988,9 +975,10 @@ const createMeshes = () => {
 
 const generatePreset = () => {
   randomizeSettings();
-  loadVisualizer(false);
+  window.pane.refresh();
   presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1;
   handleUI(presetManager.currentPreset);
+  loadVisualizer(false);
 }
 
 const selectRandomPreset = () => {
