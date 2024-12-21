@@ -47,8 +47,7 @@ import {
   AgXToneMapping,
   NeutralToneMapping,
   CustomToneMapping,
-  HalfFloatType,
-} from 'three';
+  HalfFloatType } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
@@ -59,6 +58,10 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import Stats from 'three/addons/libs/stats.module'
 import { reverseAudioBuffer } from './helpers.js';
 import effects from './effects.js';
+import {ToonShader1,
+  ToonShader2,
+  ToonShaderHatching,
+  ToonShaderDotted} from 'three/addons/shaders/ToonShader.js';
 
 {
 
@@ -295,7 +298,7 @@ const randomizeSettings = () => {
   effects.colorifyShader.enabled = Math.random() > 0.75 ? true : false;
 
   window.pane.refresh();
-  effects.applyPostProcessing(scene, renderer, camera);
+  composer = effects.applyPostProcessing(scene, renderer, camera, composer);
 }
 
 const initTweakpane = () => {
@@ -354,7 +357,7 @@ const initTweakpane = () => {
     // bloom ui
     {
       const bloomui = firstTab.pages[1].addFolder({title: 'Bloom Settings'}).on('change', () => {
-        composer = effects.applyPostProcessing(scene, renderer, camera)
+        setTimeout(()=>{composer = effects.applyPostProcessing(scene, renderer, camera, composer)}, 10);
       })
       bloomui.addBinding(effects.bloom.settings, 'strength', {min: 0.0, max: 10.0, label: 'Strength' });
       bloomui.addBinding(effects.bloom.settings, 'radius', {min: -10.0, max: 10.0, label: 'Radius' });
@@ -365,48 +368,108 @@ const initTweakpane = () => {
     // post processing ui
     {
       const ppui = firstTab.pages[1].addFolder({title: 'Post Processing Effects'}).on('change', () => {
-        composer = effects.applyPostProcessing(scene, renderer, camera);
+        setTimeout(()=>{composer = effects.applyPostProcessing(scene, renderer, camera, composer)}, 10);
       });
-      ppui.addBinding(effects.toneMapping, 'method', {
-        label: 'ToneMapping',
-        options: {
-           Linear : LinearToneMapping,
-           Cineon : CineonToneMapping,
-           Filmic : ACESFilmicToneMapping,
-           NoTone : NoToneMapping,
-           Reinhard : ReinhardToneMapping,
-           AGX : AgXToneMapping,
-           Neutral : NeutralToneMapping,
-           //Custom : CustomToneMapping,
+      // tone mapping
+      {
+        ppui.addBinding(effects.toneMapping, 'method', {
+          label: 'ToneMapping',
+          options: {
+             Linear : LinearToneMapping,
+             Cineon : CineonToneMapping,
+             Filmic : ACESFilmicToneMapping,
+             NoTone : NoToneMapping,
+             Reinhard : ReinhardToneMapping,
+             AGX : AgXToneMapping,
+             Neutral : NeutralToneMapping,
+             //Custom : CustomToneMapping,
+          }
+        }).on('change', () => {
+          effects.outputPass.enabled = true; 
+          composer = effects.applyPostProcessing(scene, renderer, camera, composer);
+          renderer.toneMapping = effects.toneMapping.method;
+          pane.refresh();
+        });
+        ppui.addBinding(renderer, 'toneMappingExposure', {min: -500.0, max: 500.0, label: 'Exposure' });
+      }
+
+      const pptab = ppui.addTab({
+        pages: [
+          {title: 'Effect Enabled'},
+          {title: 'Effect Settings'},
+        ],
+      });
+      
+      let rgbShiftAmount = pptab.pages[1].addBinding(effects.RGBShift.shader.uniforms.amount, 'value', {min: 0, max: 0.1, label: 'RGB Shift'});
+      let rgbShiftAngle = pptab.pages[1].addBinding(effects.RGBShift.shader.uniforms.angle, 'value', {min: 0, max: Math.PI * 2, label: 'Angle'});
+      rgbShiftAmount.hidden = true;
+      rgbShiftAngle.hidden = true;
+      pptab.pages[0].addBinding(effects.RGBShift, 'enabled', {label: 'RGBShift'}).on('change', ()=>{
+        if (effects.RGBShift.enabled) {
+          rgbShiftAmount.hidden = false;
+          rgbShiftAngle.hidden = false;
+        } else {
+          rgbShiftAmount.hidden = true;
+          rgbShiftAngle.hidden = true;
         }
-      }).on('change', () => {
-        effects.outputPass.enabled = true; 
-        effects.applyPostProcessing(scene, renderer, camera);
-        renderer.toneMapping = effects.toneMapping.method;
-        pane.refresh();
       });
-      ppui.addBinding(renderer, 'toneMappingExposure', {min: -500.0, max: 500.0, label: 'Exposure' });
-      ppui.addBinding(effects.RGBShift, 'enabled', {label: 'RGBShift'})
-      ppui.addBinding(effects.dotShader, 'enabled', {label: 'Dot FX'});
-      ppui.addBinding(effects.luminosityShader, 'enabled', {label: 'Luminosity'});
-      // let afterImageDamp = ppui.addBinding(effects.afterImagePass.shader.uniforms.damp, 'value', {
-      //   min: 0.0,
-      //   max: 1.0,
-      //   label: "Damp",
-      // });
-      ppui.addBinding(effects.afterImagePass, 'enabled', {label: 'After Image'}).on('change', ()=>{
-        //=afterImageDamp.hidden = !afterImageDamp.hidden;
+      pptab.pages[0].addBinding(effects.dotShader, 'enabled', {label: 'Dot FX'});
+      pptab.pages[0].addBinding(effects.technicolorShader, 'enabled', {label: 'Technicolor'});
+      pptab.pages[0].addBinding(effects.luminosityShader, 'enabled', {label: 'Luminosity'});
+      let afterImageDamp = pptab.pages[1].addBinding(effects.afterImagePass.shader.uniforms.damp, 'value', {
+        min: 0.0,
+        max: 1.0,
+        label: "After Image Damp",
       });
-      ppui.addBinding(effects.sobelShader, 'enabled', {label: 'Sobel'}).on('change', () => {
+      afterImageDamp.hidden = true;
+      pptab.pages[0].addBinding(effects.afterImagePass, 'enabled', {label: 'After Image'}).on('change', ()=>{
+        effects.afterImagePass.enabled ? afterImageDamp.hidden = false : afterImageDamp.hidden = true;
+      });
+      pptab.pages[0].addBinding(effects.sobelShader, 'enabled', {label: 'Sobel'}).on('change', () => {
         effects.sobelShader.shader.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
         effects.sobelShader.shader.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
       });
-      ppui.addBinding(effects.glitchPass, 'enabled', {label: "Glitch"});
-      ppui.addBinding(effects.colorifyShader, 'enabled', {label: "Colorify"});
-      ppui.addBinding(effects.halftonePass, 'enabled', {label: 'Halftone'});
-      ppui.addBinding(effects.gammaCorrectionShader, 'enabled', {label: 'Gamma Correction'});
-      ppui.addBinding(effects.kaleidoShader, 'enabled', {label: 'Kaleid'});
-      ppui.addBinding(effects.outputPass, 'enabled', {label: 'Output Pass'});
+
+      // let glitchAmount = pptab.pages[1].addBinding(effects.glitchPass, 'size', {label: 'Glitch Amount'});
+      // glitchAmount.hidden = true;
+      pptab.pages[0].addBinding(effects.glitchPass, 'enabled', {label: "Glitch"}).on('change',()=>{
+        // effects.glitchPass.enabled ? glitchAmount.hidden = false : glitchAmount.hidden = true;
+      });
+      let colorifyHue = pptab.pages[1].addBinding(effects.colorifyShader.shader.uniforms.color, 'value', {label: 'Colorify Hue'});
+      colorifyHue.hidden = true;
+      pptab.pages[0].addBinding(effects.colorifyShader, 'enabled', {label: "Colorify"}).on('change', () => {
+        effects.colorifyShader.enabled ? colorifyHue.hidden = false : colorifyHue.hidden = true;
+      });
+      // let toonShaderChoice = pptab.pages[1].addBinding(effects.toonShader, 'toonShaderChoice', 
+      //   {
+      //   label: 'Toon Shader',
+      //   options: {
+      //     ToonShader1 : ToonShader1,
+      //     ToonShader2 : ToonShader2,
+      //     ToonShaderHatching : ToonShaderHatching,
+      //     ToonShaderDotted : ToonShaderDotted,
+      //     }
+      //   });
+      // toonShaderChoice.hidden = true;
+      // pptab.pages[0].addBinding(effects.toonShader, 'enabled', {label: 'Toon Shader'}).on('change',()=>{
+      //   effects.toonShader.enabled ? toonShaderChoice.hidden = false : toonShaderChoice.hidden = true;
+      // })
+      pptab.pages[0].addBinding(effects.halftonePass, 'enabled', {label: 'Halftone'});
+      pptab.pages[0].addBinding(effects.gammaCorrectionShader, 'enabled', {label: 'Gamma Correction'});
+      let kaleidoSides = pptab.pages[1].addBinding(effects.kaleidoShader.shader.uniforms.sides, 'value', {label: 'Kaleidoscope sides'}); 
+      let kaleidoAngle = pptab.pages[1].addBinding(effects.kaleidoShader.shader.uniforms.angle, 'value', {label: 'Kaleidoscope angle'});
+      kaleidoAngle.hidden = true;
+      kaleidoSides.hidden = true;
+      pptab.pages[0].addBinding(effects.kaleidoShader, 'enabled', {label: 'Kaleid'}).on('change', ()=>{
+        if (effects.kaleidoShader.enabled) {
+          kaleidoAngle.hidden = false;
+          kaleidoSides.hidden = false;
+        } else {
+          kaleidoAngle.hidden = true;
+          kaleidoSides.hidden = true;
+        }
+      });
+      pptab.pages[0].addBinding(effects.outputPass, 'enabled', {label: 'Output Pass'});
     }
 
     // camera ui
@@ -416,7 +479,7 @@ const initTweakpane = () => {
       });
       camui.addBinding(camera, 'fov', {min: 1, max: 359, label: 'FOV'});
       camui.addBinding(state, 'camTilt', {min: 0.0, max: 2*Math.PI, label: 'Camera Orientation'}).on('change', () => {
-        camera.up.set(Math.sin(state.camTilt), Math.cos(state.camTilt), Math.sin(state.camTilt));
+        camera.up.set(Math.sin(state.camTilt)/100, Math.cos(state.camTilt)/100, -Math.sin(state.camTilt)/100);
         //camera.lookAt(0, 0, 0);        // now call lookAt
       })
       camui.addButton({
@@ -452,7 +515,7 @@ const eventSetup = () => {
     camera.updateProjectionMatrix();
     renderer.setSize( window.innerWidth, window.innerHeight );
     tooltipRenderer.setSize(window.innerWidth, window.innerHeight);
-    composer = effects.applyPostProcessing(scene, renderer, camera);
+    composer = effects.applyPostProcessing(scene, renderer, camera, composer);
   });
 
   // Mouse events
@@ -847,7 +910,6 @@ const render = () => {
   state.size = (1-state.easing_speed) * state.currAudio + state.easing_speed * state.size + state.volume_multiplier*.01;
   
   if (bass_input > 0.163) {
-    console.log('down down shake shake baby ib tge rag rod an im al abt that snow')
     shake();
     controls.update();
   }
@@ -903,7 +965,7 @@ const loadPreset = (jsonInput) => {
   loadVisualizer(false, preset.shader);
   loadControls(preset.controls);
   window.pane.importState(preset.settings);
-  composer = effects.applyPostProcessing(scene, renderer, camera);
+  composer = effects.applyPostProcessing(scene, renderer, camera, composer);
   window.pane.refresh();
   if (typeof audioFile === 'undefined') loadAudio(null, preset.path + '.mp3');
   audio.autoplay = true;
@@ -1131,8 +1193,6 @@ function ScreenShake() {
         };
 
 }
-
-window.shakey = shake;
       
 function shake() {
       	//screenShake.shake( camera, new Vector3(0, -50, 0),10 );
@@ -1166,6 +1226,8 @@ const handleUI = (presetNumber) => {
     document.getElementById('ui_save').style.display = localStorage.getItem('preset'+presetNumber) === null ? 'block' : 'none';
     document.getElementById('ui_delete').style.display = localStorage.getItem('preset'+presetNumber) !== null ? 'block' : 'none';
   }
+
+  pane.refresh();
 }
 
 const growVisualizer = () => {

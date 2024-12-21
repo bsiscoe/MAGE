@@ -13,6 +13,9 @@ import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShade
 import { ColorifyShader } from 'three/addons/shaders/ColorifyShader.js';
 import { HalftonePass } from 'three/addons/postprocessing/HalftonePass.js';
 import { KaleidoShader } from 'three/addons/shaders/KaleidoShader.js';
+import { TechnicolorShader } from 'three/addons/shaders/TechnicolorShader.js';
+import { ToonShader1, ToonShader2, ToonShaderHatching, ToonShaderDotted} from 'three/addons/shaders/ToonShader.js';
+import { BleachBypassShader } from 'three/addons/shaders/BleachBypassShader.js';
 import { Vector2 } from 'three';
 
 // threejs effects list
@@ -24,10 +27,6 @@ let effects = {
   sobelShader : {
       shader : new ShaderPass(SobelOperatorShader),
       enabled : false,
-      update : function() {
-        this.shader.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
-        this.shader.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
-      }
   },
   halftonePass : {
     shader : new HalftonePass(),
@@ -50,35 +49,57 @@ let effects = {
     shader : new ShaderPass(ColorifyShader),
     enabled : false,
   },
+  technicolorShader : {
+    shader : new ShaderPass(TechnicolorShader),
+    enabled : false,
+  },
+  toonShader : {
+    shader : new ShaderPass(ToonShader1),
+    enabled : false,
+    toonShaderChoice : 0,
+    update : function() {
+      this.shader = new ShaderPass(this.toonShaderChoice)
+    },
+  },
+  bleachBypassShader : {
+    shader : new ShaderPass(BleachBypassShader),
+    enabled : false,
+  },
   RGBShift : {
     shader : new ShaderPass(RGBShiftShader),
-    scale : 0.0015,
     enabled : false,
   },
   bloom : {
-      shader : null,
-      settings : {
+    settings : {
         strength : 1.0,
         radius : 0.2,
         threshold : 0.1,
-      },
+    },
+    shader : new UnrealBloomPass(
+      new Vector2(window.innerWidth, window.innerHeight),
+      1.6,
+      0.2,
+      0.2,
+    ),
     
-      enabled : false,
+    enabled : false,
     
-      update : () => {
-        effects.bloom.shader = new UnrealBloomPass(
-          new Vector2(window.innerWidth, window.innerHeight),
-          effects.bloom.settings.strength,
-          effects.bloom.settings.radius,
-          effects.bloom.settings.threshold
-        );
-      },
+    update : function() {
+      this.shader?.dispose(); // CALL DISPOSE TO PREVENT MEM LEAKS
+      this.shader = new UnrealBloomPass(
+        new Vector2(window.innerWidth, window.innerHeight),
+        this.settings.strength,
+        this.settings.radius,
+        this.settings.threshold
+      );
+    },
   },
   afterImagePass : {
     shader : new AfterimagePass(),
     enabled : false,
-    update : (damp) => {
-      effects.afterImagePass.shader = new AfterimagePass(damp);
+    update : function (damp){
+      this.shader?.dispose();
+      this.shader = new AfterimagePass(damp);
     },
   },
   kaleidoShader : {
@@ -86,32 +107,34 @@ let effects = {
     enabled : false,
   },
   glitchPass : {
-    shader : new GlitchPass(),
+    shader : new GlitchPass(64),
     enabled : false,
   },
   outputPass : {
     shader : new OutputPass(),
     enabled : true,
   },
-  applyPostProcessing : function(scene, renderer, camera){
+  applyPostProcessing : function(scene, renderer, camera, composer) {
     
+  // CALL DISPOSE TO PREVENT MEM LEAKS
+  this.bloom.update(); 
+  this.afterImagePass.update();
+  this.toonShader.update();
+
     // clean slate
-    let composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    
-    // update fx resolutions
-    this.bloom.update();
-    this.sobelShader.update();
+    composer?.dispose();
+    let newComposer = new EffectComposer(renderer);
+    newComposer.addPass(new RenderPass(scene, camera));
 
     let allEffects = Object.keys(this); 
   
     allEffects.forEach(effect => {
       if (this[`${effect}`].enabled) 
-        composer.addPass(this[`${effect}`].shader);
+        newComposer.addPass(this[`${effect}`].shader);
         //composer.addPass(new RenderPass(scene, camera));
     });
 
-    return composer;
+    return newComposer;
   }
 }
 
