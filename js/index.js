@@ -1,19 +1,18 @@
 // TO DO 
 
-// jittering animations
 // shaders can be less twisty when grid and ALSO
+// more effects bindings
+// kaleidoscope stretching (not currently fixable)
 // make more presets
 // add more threejs effects
 // finalize video demo
 // add more skyboxes
 // skybox upload
-// fix controllingAudio playback rate logic
+// fix controllingAudio playback rate logic WHY ME DAWG
 // adjust tweakpane ui to not have unnecessary values and have more
-// RANDOM TWEAK PANE VALUES
-// better randomization and more fx
-// reset bloom and other objects windowResolution on Resizing Window callback
 
 import { 
+  Quaternion,
   Scene, 
   SphereGeometry, 
   BoxGeometry,
@@ -29,6 +28,7 @@ import {
   Clock, 
   AudioListener, 
   Audio,
+  AudioContext,
   AudioLoader, 
   AudioAnalyser,
   TextureLoader, 
@@ -81,9 +81,8 @@ import effects from './effects.js';
   var tooltipImage;
   var audioFile;
   var listener;
-  var labelRenderer;
+  var tooltipRenderer;
   var audioBuffer;
-  var reversedAudio;
 }
 window.TIME_MULTIPLIER = 1.0;
 
@@ -94,6 +93,9 @@ let timeIncreasing = true;
 let fileInput = document.getElementById('file');
 
 let audio = null;
+let reversedAudio = null;
+let playbackTime = 0; // Tracks current playback time manually
+let isReversed = false;
 
 let visualizer = {
     path : '',
@@ -110,6 +112,7 @@ let visualizer = {
 // shaderpark preset shaders
 let shaders = [
   'default', 
+  'dev',
   'og', 
   'react', 
   'example', 
@@ -117,6 +120,12 @@ let shaders = [
   'test2', 
   'test3'
 ]
+
+let inputs = {
+  currMouse : new Vector3(),
+  pointerDown: 0.0,
+  currPointerDown: 0.0,
+}
 
 // visualizer and control states
 let state = {
@@ -145,6 +154,10 @@ window.presetManager = {
   userPresetCount : +(localStorage.getItem('userPresetCount') || 0),
   currentPreset : 0, // default scene
   currentlyLoadingPreset : false,
+}
+
+window.selectNextPreset = function() {
+  loadVisualizer(true);
 }
 
 ////////////////
@@ -177,6 +190,7 @@ const createScene = () => {
   // initialize camera
   camera = new PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 100000 );
   camera.position.z = 5.5;
+  camera.lookAt(0,10,100)
 
   // init audio listener
   listener = new AudioListener();
@@ -197,22 +211,12 @@ const createScene = () => {
   stats.dom.style.display = 'none';
 
   // initialize 2D renderer
-  labelRenderer = new CSS2DRenderer();
-  labelRenderer.setSize(window.innerWidth, window.innerHeight)
-  labelRenderer.domElement.style.position = 'absolute'
-  labelRenderer.domElement.style.top = '0px'
-  labelRenderer.domElement.style.pointerEvents = 'none'
-  document.body.appendChild(labelRenderer.domElement)
-
-  // add in tooltip ui
-  tooltipImage = document.createElement('img');
-  tooltipImage.src = '../resources/middlemouse.png';
-  const div = document.createElement('div')
-  div.appendChild(tooltipImage)
-  tooltipUI = new CSS2DObject(div);
-  tooltipUI.scale.set(0.12,0.12,0.12)
-  tooltipUI.position.set(0,2.2,0)
-  scene.add(tooltipUI)
+  tooltipRenderer = new CSS2DRenderer();
+  tooltipRenderer.setSize(window.innerWidth, window.innerHeight)
+  tooltipRenderer.domElement.style.position = 'absolute'
+  tooltipRenderer.domElement.style.top = '0px'
+  tooltipRenderer.domElement.style.pointerEvents = 'none'
+  document.body.appendChild(tooltipRenderer.domElement)
 
   // initialize clock
   clock = new Clock();
@@ -228,6 +232,15 @@ const createScene = () => {
   controls.autoRotate = state.rotate_toggle;
   controls.autoRotateSpeed = state.autorotateSpeed;
   controls.saveState();
+
+    // add in tooltip ui
+    tooltipImage = document.createElement('img');
+    tooltipImage.src = '../resources/middlemouse.png';
+    const div = document.createElement('div')
+    div.appendChild(tooltipImage)
+    tooltipUI = new CSS2DObject(div);
+    tooltipUI.scale.set(0.05,0.05,0.05)
+    scene.add(tooltipUI)
 }
 
 const loadVisualizer = (choosing_from_array, using_cookie_data) => {
@@ -276,6 +289,10 @@ const randomizeSettings = () => {
   effects.RGBShift.enabled = Math.random() > 0.5 ? true : false;
   effects.sobelShader.enabled = Math.random() > 0.7 ? true : false;
   effects.luminosityShader.enabled = Math.random() > 0.75 ? true : false;
+  effects.kaleidoShader.enabled = Math.random() > 0.85 ? true : false;
+  effects.gammaCorrectionShader.enabled = Math.random() > 0.75 ? true : false;
+  effects.halftonePass.enabled = Math.random() > 0.75 ? true : false;
+  effects.colorifyShader.enabled = Math.random() > 0.75 ? true : false;
 
   window.pane.refresh();
   effects.applyPostProcessing(scene, renderer, camera);
@@ -372,7 +389,14 @@ const initTweakpane = () => {
       ppui.addBinding(effects.RGBShift, 'enabled', {label: 'RGBShift'})
       ppui.addBinding(effects.dotShader, 'enabled', {label: 'Dot FX'});
       ppui.addBinding(effects.luminosityShader, 'enabled', {label: 'Luminosity'});
-      ppui.addBinding(effects.afterImagePass, 'enabled', {label: 'After Image'});
+      // let afterImageDamp = ppui.addBinding(effects.afterImagePass.shader.uniforms.damp, 'value', {
+      //   min: 0.0,
+      //   max: 1.0,
+      //   label: "Damp",
+      // });
+      ppui.addBinding(effects.afterImagePass, 'enabled', {label: 'After Image'}).on('change', ()=>{
+        //=afterImageDamp.hidden = !afterImageDamp.hidden;
+      });
       ppui.addBinding(effects.sobelShader, 'enabled', {label: 'Sobel'}).on('change', () => {
         effects.sobelShader.shader.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
         effects.sobelShader.shader.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
@@ -391,11 +415,9 @@ const initTweakpane = () => {
         camera.updateProjectionMatrix();
       });
       camui.addBinding(camera, 'fov', {min: 1, max: 359, label: 'FOV'});
-      camui.addBinding(state, 'camTilt', {min: 0.0, max: .15, label: 'Camera Orientation'}).on('change', () => {
-        const x = Math.cos(state.camTilt) * camera.up.x - Math.sin(state.camTilt) * camera.up.y;
-        const y = Math.sin(state.camTilt) * camera.up.x + Math.cos(state.camTilt) * camera.up.y;
-        camera.up.set(x, y, camera.up.z);       // set up
-        camera.lookAt(0, 0, 0);        // now call lookAt
+      camui.addBinding(state, 'camTilt', {min: 0.0, max: 2*Math.PI, label: 'Camera Orientation'}).on('change', () => {
+        camera.up.set(Math.sin(state.camTilt), Math.cos(state.camTilt), Math.sin(state.camTilt));
+        //camera.lookAt(0, 0, 0);        // now call lookAt
       })
       camui.addButton({
         title: 'Reset',
@@ -409,6 +431,19 @@ const initTweakpane = () => {
     window.pane.hidden = true;
 }
 
+function updatePlaybackTime() {
+  const deltaTime = clock.getDelta();
+
+  if (isReversed) {
+    playbackTime -= deltaTime * Math.abs(reversedAudio.playbackRate);
+  } else {
+    playbackTime += deltaTime * audio.playbackRate;
+  }
+
+  // Clamp playback time to buffer duration
+  playbackTime = Math.max(0, Math.min(audio.buffer.duration, playbackTime));
+}
+
 const eventSetup = () => {
 
   // resizing window event
@@ -416,64 +451,62 @@ const eventSetup = () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize( window.innerWidth, window.innerHeight );
-    labelRenderer.setSize(this.window.innerWidth, this.window.innerHeight);
+    tooltipRenderer.setSize(window.innerWidth, window.innerHeight);
     composer = effects.applyPostProcessing(scene, renderer, camera);
   });
 
   // Mouse events
   window.addEventListener( 'pointermove', (event) => {
-    state.currMouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-    state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+    if (visualizer.controllingAudio) {
+      state.currMouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+      state.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+    } else {
+      state.currMouse.x = ( event.clientX / window.innerWidth ) / 4 - 1;
+      state.currMouse.y = - ( event.clientY / window.innerHeight ) / 4 + 1;
+    }
+
+    inputs.currMouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+    inputs.currMouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 
     // control audio playback rate and volume TO DO FIX
     if (visualizer.controllingAudio) {
-      // const playbackRate = state.currMouse.x * 2;
-    
-      // // Get the audio context from the listener
-      // const audioContext = audio.listener.context;
+      // const playbackRate = state.currMouse.x * 4 + 1;
     
       // if (playbackRate < 0) {
-      //   // Set the playback rate for reversed audio
-      //   reversedAudio.setPlaybackRate(Math.abs(playbackRate)); 
-    
-      //   // If reversed audio is not playing, start it from the corresponding position
-      //   if (!reversedAudio.isPlaying) {
-      //     // Stop the normal audio
-      //     audio.stop(); 
-    
-      //     // Set the offset for reversed audio
-      //     reversedAudio.offset = reversedAudio.buffer.duration - audio.context.currentTime;
-    
-      //     // Start reversed audio from calculated position
-      //     reversedAudio.play();
-      //     reversedAudio.isPlaying = true;
+      //   if (!isReversed) {
+      //     // Switch to reversed audio
+      //       const reversedOffset = audio.buffer.duration - playbackTime;
+      //       reversedAudio.offset = reversedOffset;
+      //       audio.stop();
+      //       reversedAudio.play();
+      //       isReversed = true;
       //   }
+
+      //   reversedAudio.setPlaybackRate(Math.abs(playbackRate));
       // } else {
-      //   // Set the playback rate for normal audio
-      //   audio.setPlaybackRate(playbackRate); 
-    
-      //   // If normal audio is not playing, start it from the corresponding position
-      //   if (!audio.isPlaying) {
-      //     // Stop the reversed audio
-      //     reversedAudio.stop(); 
-    
-      //     // Set the offset for normal audio
-      //     audio.offset = reversedAudio.context.currentTime;
-    
-      //     // Start normal audio from calculated position
+      //   if (isReversed) {
+      //     // Switch to normal audio
+      //     const normalOffset = audio.buffer.duration - playbackTime;
+      //     audio.offset = normalOffset;
+      //     reversedAudio.stop();
       //     audio.play();
+      //     isReversed = false;
       //   }
+        
+      //   audio.setPlaybackRate(playbackRate);
       // }
+    
+  
     
     
 
-        // shrink the orb for feedback
-        state.volume_multiplier = state.currMouse.y * 2
-        //camera.fov += state.currMouse.y
-        state.base_speed = Math.max(0.1, Math.min(0.9, state.base_speed+state.mouse.y/50))
-        state.minimizing_factor = Math.max(0.01, Math.min(1.0, state.minimizing_factor+state.currMouse.y/100));
-        visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y));
-        audio.setVolume(Math.max(0.0, Math.min(1.0, audio.getVolume() + state.currMouse.y/5))); //state.currMouse.y * .2
+      //   // shrink the orb for feedback
+      //   state.volume_multiplier = state.currMouse.y * 2
+      //   //camera.fov += state.currMouse.y
+      //   state.base_speed = Math.max(0.1, Math.min(0.9, state.base_speed+state.mouse.y/50))
+      //   state.minimizing_factor = Math.max(0.01, Math.min(1.0, state.minimizing_factor+state.currMouse.y/100));
+      //   visualizer.scale = Math.max(1.0, Math.min(30.0, visualizer.scale+state.currMouse.y));
+      //   audio.setVolume(Math.max(0.0, Math.min(1.0, audio.getVolume() + state.currMouse.y/5))); //state.currMouse.y * .2
     }
     tooltipUI.visible = false;
     if (visualizer.clickable && visualizer.render_tooltips) tooltipUI.visible = true;
@@ -493,6 +526,7 @@ const eventSetup = () => {
     }
 
     if (event.button == 2) {
+      tooltipImage.hidden = false;
       visualizer.render_tooltips = true;
       tooltipUI.visible = true;
       window.pane.hidden = true;
@@ -593,6 +627,7 @@ const eventSetup = () => {
 
   // hide ui button
   document.getElementById('ui_hide').addEventListener('click', function() {
+    tooltipImage.hidden = true;
     visualizer.render_tooltips = false;
     window.pane.hidden = true;
     stats.dom.style.display = 'none';
@@ -757,6 +792,7 @@ const switchControls = () => {
 const render = () => {
   requestAnimationFrame( render );
   let delta = clock.getDelta();
+
   // alternates flow of time to prevent animation bugs
   if ((state.time < 180) && timeIncreasing) { // 3 minutes
     state.time += TIME_MULTIPLIER*delta;
@@ -787,8 +823,11 @@ const render = () => {
   var bass_input = 0;
   var mid_input = 0;
 
+  //updatePlaybackTime();
+
   // analyze audio using FFT
-  if (audio != null) {
+  if (audio.isPlaying || reversedAudio.isPlaying) {
+
     // FFT Bucket 2
     let bass_analysis = Math.pow((visualizer.analyser.getFrequencyData()[2]/255)*state.minimizing_factor, state.power_factor);
     bass_input = bass_analysis + delta * state.base_speed;
@@ -806,15 +845,18 @@ const render = () => {
   let val = Math.sin(state.time)*(state.size)*0.02+0.1;
   state.currAudio = bass_input + val * state.base_speed + delta * state.base_speed;
   state.size = (1-state.easing_speed) * state.currAudio + state.easing_speed * state.size + state.volume_multiplier*.01;
-  if (bass_input > 0.3) {
+  
+  if (bass_input > 0.163) {
+    console.log('down down shake shake baby ib tge rag rod an im al abt that snow')
     shake();
+    controls.update();
   }
 
   // ONLY CHECK PIXEL IF IT INTERSECTS
 
   if (controls.enabled && getOS() === ('Windows' || 'Mac OS' || 'Linux')) {
     let raycaster = new Raycaster();
-    raycaster.setFromCamera(state.currMouse, camera);
+    raycaster.setFromCamera(inputs.currMouse, camera);
     let intersects = raycaster.intersectObject(visualizer.mesh);
     if ( intersects.length > 0) {
       visualizer.intersected = true;
@@ -826,8 +868,8 @@ const render = () => {
   
       // Read pixel color from render target
       const pixelBuffer = new Uint8Array(4);
-      const x = Math.floor((state.currMouse.x + 1) * 0.5 * renderTarget.width);
-      const y = Math.floor((state.currMouse.y + 1) * 0.5 * renderTarget.height);
+      const x = Math.floor((inputs.currMouse.x + 1) * 0.5 * renderTarget.width);
+      const y = Math.floor((inputs.currMouse.y + 1) * 0.5 * renderTarget.height);
       renderer.readRenderTargetPixels(renderTarget, x, y, 1, 1, pixelBuffer);
   
       // Check if pixel belongs to shader (e.g., non-zero alpha)
@@ -846,7 +888,11 @@ const render = () => {
   stats.update();
   screenShake.update(camera);
   controls.update();
-  if (visualizer.render_tooltips) labelRenderer.render(scene, camera);
+  
+  var zoom = controls.target.distanceTo( controls.object.position )
+  tooltipUI.position.set(0,zoom/2.2,0)
+  tooltipRenderer.render(scene, camera);
+
   composer.render(scene, camera);
 }
 
@@ -1073,6 +1119,7 @@ function ScreenShake() {
 
             // Here the camera is positioned according to the wavy 'position' variable.
             camera.position.lerpVectors( this._startPoint, this._endPoint, position );
+            controls.update();
           },
 
           // This is a quadratic function that return 0 at first, then return 0.5 when t=0.5,
@@ -1084,9 +1131,16 @@ function ScreenShake() {
         };
 
 }
+
+window.shakey = shake;
       
 function shake() {
-      	//screenShake.shake( camera, new Vector3(0, -5, 0),5 );
+      	//screenShake.shake( camera, new Vector3(0, -50, 0),10 );
+        // camera.position.set(0,0,-4.5);
+        // controls.update();
+        
+        // setTimeout(() => {camera.position.set(0,0,-5.5);}, 100);
+        // controls.update();
 }
 
 const bundleSceneIntoJSON = () => {

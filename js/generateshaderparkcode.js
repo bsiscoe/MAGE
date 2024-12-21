@@ -16,7 +16,7 @@ export function generateshaderparkcode(shader)  {
       rotateX(mouse.y * 2 * PI / 2 * (1+nsin(time)))
       metal(.5*size)
       let rayDir = normalize(getRayDirection())
-      let clampedColor = vec3(max(0.0, min(rayDir.x + 0.2, 100.0)), max(0.0, min(rayDir.y + 0.2, 100.0)), max(0.0, min(rayDir.z + 0.2, 100.0)))
+      let clampedColor = vec3(rayDir.x+.2, rayDir.y+.25, rayDir.z+.2)
       color(clampedColor)
 
       rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
@@ -29,6 +29,29 @@ export function generateshaderparkcode(shader)  {
       blend(ncos((time*(size)))*0.1+0.1)
       boxFrame(vec3(size-.075*pointerDown), size)
       `
+    } else if (shader == 'dev') {
+          return `
+          let size = input()
+          let pointerDown = input()
+          time = .3*time
+        size *= 1.3
+          rotateY(mouse.x * -2 * PI / 2 * (1+nsin(time)))
+          rotateX(mouse.y * 2 * PI / 2 * (1+nsin(time)))
+          metal(.5*size)
+          let rayDir = normalize(getRayDirection())
+      let clampedColor = vec3(max(0.0, min(rayDir.x + 0.2, 100.0)), max(0.0, min(rayDir.y + 0.2, 100.0)), max(0.0, min(rayDir.z + 0.2, 100.0)))
+      color(clampedColor)
+    
+          rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
+        rotateX(cos((getRayDirection().x*16*nsin(time)+size)))
+        rotateZ(ncos((getRayDirection().z*4*cos(time)+size)))
+          boxFrame(vec3(size), size*.1)
+          shine(0.8*size)
+          blend(nsin(time*(size))*0.1+0.1)
+          sphere(size/2-pointerDown*.3)
+          blend(ncos((time*(size)))*0.1+0.1)
+          boxFrame(vec3(size-.075*pointerDown), size)
+          `
     } else if (shader == 'og')
       {
       return `
@@ -1334,7 +1357,7 @@ const shaderCode = `
   
 return shaderCode;
 
-    } else if (shader == 'generated'){
+    } else if (shader == 'generated-agAIN'){
       
 
         const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
@@ -1474,9 +1497,162 @@ return shaderCode;
         return shaderCode;
     
       
+    } else if (shader == 'generated-again') {
+        const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+        const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
+        let shapes = [];
+      
+        // Randomly decide how many shapes and which shapes to include
+        for (let i = 0; i < numShapes; i++) {
+          const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+          const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+          shapes.push({ shape: shapeChoice, sizeFactor });
+        }
+      
+        // Functions to return random values each time they are called
+        const randomRotateFactor = () => Math.random() * 2 + 1;
+        const randomBoolean = () => Math.random() < 0.5;
+        const useSameFactor = () => Math.random() < 0.3; // Adjust probability for shared factors
+        const sharedFactor = randomRotateFactor(); // Shared rotation factor
+      
+        const randomMetal = () => Math.random() * 0.5 + 0.3;
+        const randomShine = () => Math.random() * 0.5 + 0.3;
+        const randomBlend = () => Math.random() * 0.2 + 0.1;
+        const noiseFactor = () => Math.random() * 2;
+        const expansionFactor = () => Math.random() * 0.5;
+        const timeFactor = () => Math.random() * 0.9 + 0.1;
+      
+        // Rotation variables
+        const rotateXActive = randomBoolean();
+        const rotateYActive = randomBoolean();
+        const rotateZActive = randomBoolean();
+      
+        const rotateXFactor = randomRotateFactor();
+        const rotateYFactor = useSameFactor() ? sharedFactor : randomRotateFactor();
+        const rotateZFactor = useSameFactor() ? sharedFactor : randomRotateFactor();
+      
+        // Generate ShaderPark code string deterministically
+        const shaderCode = `
+          setMaxIterations(${Math.floor(Math.random() * 200)});
+          setStepSize(${Math.random() * 0.9});
+      
+          let size = input();
+          let pointerDown = input();
+          time *= ${timeFactor()}; // Randomize time multiplier between 0.1 and 1
+      
+          // Rotations with conditional application
+          ${rotateXActive ? `rotateX(getRayDirection().y * ${rotateXFactor} + time * ${rotateXFactor});` : ''}
+          ${rotateYActive ? `rotateY(getRayDirection().x * ${rotateYFactor} + time * ${rotateYFactor});` : ''}
+          ${rotateZActive ? `rotateZ(getRayDirection().z * ${rotateZFactor} + time * ${rotateZFactor});` : ''}
+      
+          // Set color
+          color(getRayDirection().x, getRayDirection().y, getRayDirection().z);
+      
+          let s = getSpace();
+      
+          // Render the shapes
+          ${shapes.map(({ shape, sizeFactor }) => {
+            const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`;
+            const n = `noise(s * ${noiseFactor()})`;
+            const applyNoise = Math.random() < 0.5;
+      
+            switch (shape) {
+              case 'sphere':
+                return applyNoise
+                  ? `expand(${n} * ${expansionFactor()}); sphere(${adjustedSize} / 2);`
+                  : `sphere(${adjustedSize} / 2);`;
+              case 'boxFrame':
+                return applyNoise
+                  ? `expand(${n} * ${expansionFactor()}); boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`
+                  : `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+              case 'torus':
+                return applyNoise
+                  ? `expand(${n} * ${expansionFactor()}); torus(${adjustedSize}, ${adjustedSize} / 4);`
+                  : `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+              case 'cylinder':
+                return applyNoise
+                  ? `expand(${n} * ${expansionFactor()}); cylinder(${adjustedSize} / 4, ${adjustedSize});`
+                  : `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+              case 'grid':
+                return applyNoise
+                  ? `expand(${n} * ${expansionFactor()}); grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`
+                  : `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+              default:
+                return '';
+            }
+          }).join('\n')}
+      
+          blend(nsin(time * size) * ${randomBlend()});
+        `;
+      
+        return shaderCode;
+      
+    } else if (shader == 'generated') {
+        const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+        const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
+        let shapes = [];
+    
+        for (let i = 0; i < numShapes; i++) {
+            const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+            const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+            shapes.push({ shape: shapeChoice, sizeFactor });
+        }
+    
+        const randomRotateFactor = () => Math.random() * 2 + 1;
+        const randomMetal = () => Math.random() * 0.5 + 0.3;
+        const randomShine = () => Math.random() * 0.5 + 0.3;
+        const randomBlend = () => Math.random() * 0.2 + 0.1;
+        const noiseFactor = () => Math.random() * 5; // Scale factor increased to 5
+        const expansionFactor = () => Math.random() * 0.5;
+        const timeFactor = () => Math.random() * 0.9 + 0.1;
+    
+        // Generate ShaderPark code string deterministically
+        const shaderCode = `
+            setMaxIterations(${Math.floor(Math.random() * 200)});
+            setStepSize(${Math.random() * 0.9});
+    
+            let size = input();
+            let pointerDown = input();
+            time *= ${timeFactor()};
+    
+            rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+            rotateX(mouse.y * 5 * PI / 2 + time);
+    
+            color(${Math.random()}, ${Math.random()}, ${Math.random()});
+    
+            let s = getSpace();
+    
+            ${shapes.map(({ shape, sizeFactor }) => {
+                const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`;
+                const useFractalNoise = Math.random() < 0.5; // 50% chance to use fractalNoise
+                const n = useFractalNoise
+                    ? `fractalNoise(s * ${noiseFactor()} + time * ${Math.random() * 0.5}) * ${Math.random() * 0.5}`
+                    : `noise(s * ${noiseFactor()}) * ${expansionFactor()}`;
+                const expandCode = `expand(${n});`;
+    
+                switch (shape) {
+                    case 'sphere':
+                        return `${expandCode} sphere(${adjustedSize} / 2);`;
+                    case 'boxFrame':
+                        return `${expandCode} boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+                    case 'torus':
+                        return `${expandCode} torus(${adjustedSize}, ${adjustedSize} / 4);`;
+                    case 'cylinder':
+                        return `${expandCode} cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+                    case 'grid':
+                        return `${expandCode} grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+                    default:
+                        return '';
+                }
+            }).join('\n')}
+    
+            blend(nsin(time * size) * ${randomBlend()});
+        `;
+    
+        return shaderCode;
     }
-       
 }
+    
 
 //
 // let size = input();

@@ -21,17 +21,21 @@ let effects = {
         exposure : 1.5,
         method : 0, // Default
   },
-  luminosityShader : {
-    shader : new ShaderPass(LuminosityShader),
-    enabled : false,
-  },
   sobelShader : {
       shader : new ShaderPass(SobelOperatorShader),
       enabled : false,
+      update : function() {
+        this.shader.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
+        this.shader.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
+      }
   },
   halftonePass : {
     shader : new HalftonePass(),
     enabled : false, 
+  },
+  luminosityShader : {
+    shader : new ShaderPass(LuminosityShader),
+    enabled : false,
   },
   gammaCorrectionShader : {
     shader : new ShaderPass(GammaCorrectionShader),
@@ -73,6 +77,9 @@ let effects = {
   afterImagePass : {
     shader : new AfterimagePass(),
     enabled : false,
+    update : (damp) => {
+      effects.afterImagePass.shader = new AfterimagePass(damp);
+    },
   },
   kaleidoShader : {
     shader : new ShaderPass(KaleidoShader),
@@ -87,12 +94,15 @@ let effects = {
     enabled : true,
   },
   applyPostProcessing : function(scene, renderer, camera){
-    this.bloom.update();
     
     // clean slate
     let composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     
+    // update fx resolutions
+    this.bloom.update();
+    this.sobelShader.update();
+
     let allEffects = Object.keys(this); 
   
     allEffects.forEach(effect => {
