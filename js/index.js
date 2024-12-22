@@ -753,13 +753,14 @@ function createPresetButton (presetNumber, isNewButton) {
   });
 
   function createDivSceneButton(presetNumber) {
-    const userPresetIcon = 'scene_grad10'
+    const defaultPresetIcon = 'scene_grad01';
+    const userPresetIcon = 'scene_grad10';
     
     // template presets
     if (!(presetNumber > DEFAULT_PRESET_COUNT)) {
       return `  
       <div class="ui ui_bg">
-        <button class="ui_bg_item scene_grad0${presetNumber}" id="preset${presetNumber}"></button>
+        <button class="ui_bg_item ${defaultPresetIcon}" id="preset${presetNumber}"></button>
         <div class="ui_bg_label" id="preset${presetNumber}Label">${presetNumber}</div>
         <div style="clear:both;"></div>
       </div> 
