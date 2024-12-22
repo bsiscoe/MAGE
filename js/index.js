@@ -63,6 +63,7 @@ import {ToonShader1,
   ToonShaderHatching,
   ToonShaderDotted} from 'three/addons/shaders/ToonShader.js';
 
+
 {
 
 //////////////////////
@@ -238,7 +239,7 @@ const createScene = () => {
 
     // add in tooltip ui
     tooltipImage = document.createElement('img');
-    tooltipImage.src = '../resources/middlemouse.png';
+    tooltipImage.src = 'https://bsiscoe.github.io/MAGE/resources/middlemouse.png';
     const div = document.createElement('div')
     div.appendChild(tooltipImage)
     tooltipUI = new CSS2DObject(div);
@@ -321,7 +322,7 @@ const initTweakpane = () => {
     // get skybox paths
     let skyboxOptions = {};
     for (let i = 1; i <= SKYBOX_COUNT; i++) {
-      skyboxOptions[`${i}`] = `../resources/preset${i}/`;
+      skyboxOptions[`${i}`] = `https://bsiscoe.github.io/MAGE/resources/preset${i}/`;
     }
 
     // add skybox paths to tweakpane
@@ -591,7 +592,7 @@ const eventSetup = () => {
     controls.enabled = false;
     if (event.button == 1) { 
       visualizer.controllingAudio = true;
-      tooltipImage.src = '../resources/controltips2.png';
+      tooltipImage.src = 'https://bsiscoe.github.io/MAGE/resources/controltips2.png';
     }
 
     if (event.button == 2) {
@@ -605,7 +606,7 @@ const eventSetup = () => {
   });
 
   window.addEventListener( 'pointerup', (event) => {
-    tooltipImage.src = "../resources/controltips.png";
+    tooltipImage.src = "https://bsiscoe.github.io/MAGE/resources/controltips.png";
     visualizer.controllingAudio = false;
     controls.enabled = true;
     audio.setPlaybackRate(1);
@@ -754,7 +755,7 @@ function createPresetButton (presetNumber, isNewButton) {
   document.querySelector('.ui_bgs').insertAdjacentHTML('beforeend', createDivSceneButton(presetNumber)); // chatgpt
   document.getElementById(`preset${presetNumber}`).addEventListener('click', async () => {
     if (presetNumber <= DEFAULT_PRESET_COUNT) { // is default preset
-      fetch(`../resources/preset${presetNumber}/preset.json`)       // fetch the preset files
+      fetch(`https://bsiscoe.github.io/MAGE/resources/preset${presetNumber}/preset.json`)       // fetch the preset files
         .then(response => response.json())
         .then(data => {
           const jsonString = JSON.stringify(data);
@@ -813,7 +814,7 @@ function createPresetButton (presetNumber, isNewButton) {
 
 const loadDefaultPreset = () => {
   presetManager.currentPreset = 0;
-  let presetPath = `../resources/preset0/`;
+  let presetPath = `https://bsiscoe.github.io/MAGE/resources/preset0/`;
   loadSkybox(presetPath);
   loadAudio(null, presetPath + '0.mp3'); // blank audio file
   loadVisualizer(true);
