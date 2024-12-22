@@ -151,7 +151,7 @@ let state = {
 }
 
 // preset states
-const DEFAULT_PRESET_COUNT = 8;
+const DEFAULT_PRESET_COUNT = 9;
 const SKYBOX_COUNT = 9;
 window.presetManager = {
   userPresetCount : +(localStorage.getItem('userPresetCount') || 0),
@@ -435,7 +435,7 @@ const initTweakpane = () => {
       pptab.pages[0].addBinding(effects.glitchPass, 'enabled', {label: "Glitch"}).on('change',()=>{
         // effects.glitchPass.enabled ? glitchAmount.hidden = false : glitchAmount.hidden = true;
       });
-      let colorifyHue = pptab.pages[1].addBinding(effects.colorifyShader.shader.uniforms.color, 'value', {label: 'Colorify Hue'});
+      let colorifyHue = pptab.pages[1].addBinding(effects.colorifyShader, 'color', {label: 'Colorify Hue'});
       colorifyHue.hidden = true;
       pptab.pages[0].addBinding(effects.colorifyShader, 'enabled', {label: "Colorify"}).on('change', () => {
         effects.colorifyShader.enabled ? colorifyHue.hidden = false : colorifyHue.hidden = true;
@@ -479,7 +479,7 @@ const initTweakpane = () => {
       });
       camui.addBinding(camera, 'fov', {min: 1, max: 359, label: 'FOV'});
       camui.addBinding(state, 'camTilt', {min: 0.0, max: 2*Math.PI, label: 'Camera Orientation'}).on('change', () => {
-        camera.up.set(Math.sin(state.camTilt)/100, Math.cos(state.camTilt)/100, -Math.sin(state.camTilt)/100);
+        camera.up.set(Math.sin(state.camTilt), Math.cos(state.camTilt), -Math.sin(state.camTilt));
         //camera.lookAt(0, 0, 0);        // now call lookAt
       })
       camui.addButton({
@@ -489,6 +489,12 @@ const initTweakpane = () => {
         controls.reset();
       })
     }
+
+    // pane.addBinding(effects.outlinePass, 'enabled').on('change', () => {
+    //   effects.outlinePass.init();
+    // });
+
+    pane.addBinding(effects.copyShader, 'enabled');
 
     window.pane = pane;
     window.pane.hidden = true;
@@ -1095,7 +1101,7 @@ const createMeshes = () => {
 }
 
 const generatePreset = () => {
-  randomizeSettings();
+  //randomizeSettings();
   loadVisualizer(false);
   presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1;
   handleUI(presetManager.currentPreset);
