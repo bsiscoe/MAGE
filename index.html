@@ -16,8 +16,35 @@
     <link rel="stylesheet" href="style.css">
   </head>  
   <body>
-    <!-- <button id="btn">Save</button>
-    <button id="btn2">Restore</button> -->
+    <div class="ui_buttons centerx" display="style: none">
+      <abbr title-card="REGENERATE VISUALIZER">
+        <div class="ui ui_button_small" id="ui_regenerate"><img src="./resources/regenerate_ui.png"></div>
+      </abbr>
+      <abbr title-card="SAVE SCENE AS PRESET">
+        <div class="ui ui_button_small" id="ui_save"><img src="./resources/save_ui.png"></div>
+      </abbr>
+      <abbr title-card="DELETE SCENE FROM PRESETS">
+        <div class="ui ui_button_small" id="ui_delete"><img src="./resources/delete_ui.png"></div>
+      </abbr>
+      <abbr title-card="UPLOAD MUSIC TO VISUALIZER">
+        <div class="ui ui_button_small" id="ui_upload"><img src="./resources/upload_ui.png"></div>
+      </abbr>
+      <abbr title-card="HIDE ALL UI (INCLUDES MOUSE TIPS)">
+        <div class="ui ui_button_small" id="ui_hide"><img src="./resources/hide_ui.png"></div>
+      </abbr>
+      <abbr title-card="MORE SETTINGS">
+        <div class="ui ui_button_small" id="ui_settings"><img src="./resources/settings_ui.png"></div>
+      </abbr>
+      <abbr title-card="COPY SCENE DATA">
+        <div class="ui ui_button_small" id="ui_copy"><img src="./resources/copy_ui.png"></div>
+      </abbr>
+      <abbr title-card="LOAD SCENE DATA">
+        <div class="ui ui_button_small" id="ui_load"><img src="./resources/load_ui.png"></div>
+      </abbr>
+  </div>
+  <div class="ui_bgs centery EDITMODE" style="top: 265px;"> 
+    <!-- insert song presets with javascript here -->
+  </div>
     <script src="https://mrdoob.github.io/stats.js/build/stats.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
       <input type="file" id="file" style="display: none;"/>
@@ -35,5 +62,6 @@
         }
     </script>
     <script src="./js/index.js" type="module"></script>
+    <script src="./js/generateshaderparkcode.js" type="module"></script>
   </body>
 </html>
