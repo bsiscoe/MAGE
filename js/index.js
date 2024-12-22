@@ -974,7 +974,7 @@ const loadPreset = (jsonInput) => {
   window.pane.importState(preset.settings);
   composer = effects.applyPostProcessing(scene, renderer, camera, composer);
   window.pane.refresh();
-  if (typeof audioFile === 'undefined') loadAudio(null, preset.path + '.mp3');
+  if (typeof audioFile === 'undefined') loadAudio(null, preset.path + 'audio.mp3');
   audio.autoplay = true;
   presetManager.currentlyLoadingPreset = false;
 }
