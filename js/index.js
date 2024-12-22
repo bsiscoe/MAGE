@@ -1,39 +1,21 @@
-// TO DO 
+// tut vid
 
-// shaders can be less twisty when grid and ALSO
-// more effects bindings
-// kaleidoscope stretching (not currently fixable)
-// make more presets
-// add more threejs effects
-// finalize video demo
-// add more skyboxes
-// skybox upload
-// fix controllingAudio playback rate logic WHY ME DAWG
-// adjust tweakpane ui to not have unnecessary values and have more
+// preset icons
+// gen logic
 
 import { 
-  Quaternion,
   Scene, 
   SphereGeometry, 
-  BoxGeometry,
-  PlaneGeometry,
-  BackSide,
-  Vector2,
   Vector3, 
   PerspectiveCamera, 
   WebGLRenderer, 
   Color, 
-  MeshBasicMaterial, 
-  Mesh, 
   Clock, 
   AudioListener, 
   Audio,
-  AudioContext,
   AudioLoader, 
   AudioAnalyser,
-  TextureLoader, 
   CubeTextureLoader,
-  LoadingManager,
   Raycaster,
   RGBAFormat,
   UnsignedByteType,
@@ -46,8 +28,7 @@ import {
   ACESFilmicToneMapping,
   AgXToneMapping,
   NeutralToneMapping,
-  CustomToneMapping,
-  HalfFloatType } from 'three';
+} from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
@@ -58,11 +39,6 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import Stats from 'three/addons/libs/stats.module'
 import { reverseAudioBuffer } from './helpers.js';
 import effects from './effects.js';
-import {ToonShader1,
-  ToonShader2,
-  ToonShaderHatching,
-  ToonShaderDotted} from 'three/addons/shaders/ToonShader.js';
-
 
 {
 
@@ -239,7 +215,7 @@ const createScene = () => {
 
     // add in tooltip ui
     tooltipImage = document.createElement('img');
-    tooltipImage.src = 'https://bsiscoe.github.io/MAGE/resources/middlemouse.png';
+    tooltipImage.src = '../MAGE/resources/middlemouse.png';
     const div = document.createElement('div')
     div.appendChild(tooltipImage)
     tooltipUI = new CSS2DObject(div);
@@ -322,7 +298,7 @@ const initTweakpane = () => {
     // get skybox paths
     let skyboxOptions = {};
     for (let i = 1; i <= SKYBOX_COUNT; i++) {
-      skyboxOptions[`${i}`] = `https://bsiscoe.github.io/MAGE/resources/preset${i}/`;
+      skyboxOptions[`${i}`] = `../MAGE/resources/preset${i}/`;
     }
 
     // add skybox paths to tweakpane
@@ -592,7 +568,7 @@ const eventSetup = () => {
     controls.enabled = false;
     if (event.button == 1) { 
       visualizer.controllingAudio = true;
-      tooltipImage.src = 'https://bsiscoe.github.io/MAGE/resources/controltips2.png';
+      tooltipImage.src = '../MAGE/resources/controltips2.png';
     }
 
     if (event.button == 2) {
@@ -606,7 +582,7 @@ const eventSetup = () => {
   });
 
   window.addEventListener( 'pointerup', (event) => {
-    tooltipImage.src = "https://bsiscoe.github.io/MAGE/resources/controltips.png";
+    tooltipImage.src = "../MAGE/resources/controltips.png";
     visualizer.controllingAudio = false;
     controls.enabled = true;
     audio.setPlaybackRate(1);
@@ -755,7 +731,7 @@ function createPresetButton (presetNumber, isNewButton) {
   document.querySelector('.ui_bgs').insertAdjacentHTML('beforeend', createDivSceneButton(presetNumber)); // chatgpt
   document.getElementById(`preset${presetNumber}`).addEventListener('click', async () => {
     if (presetNumber <= DEFAULT_PRESET_COUNT) { // is default preset
-      fetch(`https://bsiscoe.github.io/MAGE/resources/preset${presetNumber}/preset.json`)       // fetch the preset files
+      fetch(`../MAGE/resources/preset${presetNumber}/preset.json`)       // fetch the preset files
         .then(response => response.json())
         .then(data => {
           const jsonString = JSON.stringify(data);
@@ -777,13 +753,13 @@ function createPresetButton (presetNumber, isNewButton) {
   });
 
   function createDivSceneButton(presetNumber) {
-    const userPresetIcon = 'scene_grad08'
+    const userPresetIcon = 'scene_grad10'
     
     // template presets
     if (!(presetNumber > DEFAULT_PRESET_COUNT)) {
       return `  
       <div class="ui ui_bg">
-        <button class="ui_bg_item scene_grad05" id="preset${presetNumber}"></button>
+        <button class="ui_bg_item scene_grad0${presetNumber}" id="preset${presetNumber}"></button>
         <div class="ui_bg_label" id="preset${presetNumber}Label">${presetNumber}</div>
         <div style="clear:both;"></div>
       </div> 
@@ -814,7 +790,7 @@ function createPresetButton (presetNumber, isNewButton) {
 
 const loadDefaultPreset = () => {
   presetManager.currentPreset = 0;
-  let presetPath = `https://bsiscoe.github.io/MAGE/resources/preset0/`;
+  let presetPath = `../MAGE/resources/preset0/`;
   loadSkybox(presetPath);
   loadAudio(null, presetPath + '0.mp3'); // blank audio file
   loadVisualizer(true);
@@ -974,6 +950,7 @@ const loadPreset = (jsonInput) => {
   window.pane.importState(preset.settings);
   composer = effects.applyPostProcessing(scene, renderer, camera, composer);
   window.pane.refresh();
+  window.pane.hidden ? stats.dom.style.display = 'none' : stats.dom.style.display = 'block';
   if (typeof audioFile === 'undefined') loadAudio(null, preset.path + 'audio.mp3');
   audio.autoplay = true;
   presetManager.currentlyLoadingPreset = false;
