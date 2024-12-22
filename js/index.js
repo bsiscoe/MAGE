@@ -249,11 +249,11 @@ const loadVisualizer = (choosing_from_array, using_cookie_data) => {
 
 const randomizeSettings = () => {
   state.minimizing_factor = Math.random() * 1.99 + 0.01;
-  state.power_factor = Math.random() * 9 + 1;
+  state.power_factor = Math.random() * 5 + 4;
   state.pointerDownMultiplier = Math.random();
   state.base_speed = Math.random() * 0.89 + 0.01;
   state.easing_speed = Math.random() * 0.89 + 0.01;
-  state.scale = Math.random() * 199 + 1;
+  state.scale = Math.random() * 29 + 1;
   state.autoRotate = Math.random() > 0.5 ? true : false;
   state.autorotateSpeed = Math.random() * 49.9 + 0.1
 
@@ -266,14 +266,16 @@ const randomizeSettings = () => {
 
   effects.toneMapping.method = Math.ceil(Math.random() * 7);
   effects.toneMapping.exposure = 1.0;
-  effects.RGBShift.enabled = Math.random() > 0.5 ? true : false;
+  effects.RGBShift.enabled = Math.random() > 0.7 ? true : false;
   effects.sobelShader.enabled = Math.random() > 0.7 ? true : false;
   effects.luminosityShader.enabled = Math.random() > 0.75 ? true : false;
   effects.kaleidoShader.enabled = Math.random() > 0.85 ? true : false;
   effects.gammaCorrectionShader.enabled = Math.random() > 0.75 ? true : false;
   effects.halftonePass.enabled = Math.random() > 0.75 ? true : false;
-  effects.colorifyShader.enabled = Math.random() > 0.75 ? true : false;
+  effects.afterImagePass.enabled = Math.random() > 0.75 ? true : false;
+  //effects.colorifyShader.enabled = Math.random() > 0.75 ? true : false;
 
+  controls.update();
   window.pane.refresh();
   composer = effects.applyPostProcessing(scene, renderer, camera, composer);
 }
