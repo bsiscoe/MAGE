@@ -248,12 +248,18 @@ const loadVisualizer = (choosing_from_array, using_cookie_data) => {
 }
 
 const randomizeSettings = () => {
-  state.minimizing_factor = Math.random() * 1.99 + 0.01;
-  state.power_factor = Math.random() * 9 + 1;
+  //state.minimizing_factor = Math.random() * 1.99 + 0.01;
+  //state.power_factor = Math.random() * 9 + 1;
   state.pointerDownMultiplier = Math.random();
   state.base_speed = Math.random() * 0.89 + 0.01;
   state.easing_speed = Math.random() * 0.89 + 0.01;
   state.scale = Math.random() * 199 + 1;
+  //state.minimizing_factor = Math.random() * 1.99 + 0.01;
+  //state.power_factor = Math.random() * 5 + 4;
+  state.pointerDownMultiplier = Math.random();
+  state.base_speed = Math.random() * 0.5 + 0.2;
+  state.easing_speed = Math.random() * 0.5 + 0.2;
+  state.scale = Math.random() * 29 + 1;
   state.autoRotate = Math.random() > 0.5 ? true : false;
   state.autorotateSpeed = Math.random() * 49.9 + 0.1
 
@@ -272,8 +278,13 @@ const randomizeSettings = () => {
   effects.kaleidoShader.enabled = Math.random() > 0.85 ? true : false;
   effects.gammaCorrectionShader.enabled = Math.random() > 0.75 ? true : false;
   effects.halftonePass.enabled = Math.random() > 0.75 ? true : false;
-  effects.colorifyShader.enabled = Math.random() > 0.75 ? true : false;
+  effects.afterImagePass.enabled = Math.random() > 0.75 ? true : false;
+  effects.afterImagePass.shader.uniforms.damp.value = Math.random() * 0.3 + 0.65;
+  //effects.colorifyShader.enabled = Math.random() > 0.75 ? true : false;
 
+
+  
+  controls.update();
   window.pane.refresh();
   composer = effects.applyPostProcessing(scene, renderer, camera, composer);
 }
@@ -459,6 +470,7 @@ const initTweakpane = () => {
         camera.up.set(Math.sin(state.camTilt), Math.cos(state.camTilt), -Math.sin(state.camTilt));
         //camera.lookAt(0, 0, 0);        // now call lookAt
       })
+      //camui.addBinding(camera, 'zoomSpeed', {min: 0.0, max: 10.0, label: "Zoom Speed"});
       camui.addButton({
         title: 'Reset',
         label: 'Camera Position'
@@ -470,9 +482,6 @@ const initTweakpane = () => {
     // pane.addBinding(effects.outlinePass, 'enabled').on('change', () => {
     //   effects.outlinePass.init();
     // });
-
-    pane.addBinding(effects.copyShader, 'enabled');
-
     window.pane = pane;
     window.pane.hidden = true;
 }
@@ -1045,7 +1054,7 @@ const loadControls = (presetControls) => {
 
 const createMeshes = () => {
     // add shader to geometry
-    var geometry  = new SphereGeometry(160, 60, 60);
+    var geometry  = new SphereGeometry(500, 60, 60);
     visualizer.mesh = createSculptureWithGeometry(geometry, visualizer.shader, () => {
       return {
         time : state.time,
@@ -1057,7 +1066,6 @@ const createMeshes = () => {
     })
     scene.add(visualizer.mesh);
 
-    // Scene and camera for rendering Shader Park
     // Render target for Shader Park output for object picking
     renderTarget = new WebGLRenderTarget(window.innerWidth/8, window.innerHeight/8, { // use quarter res to save frames
       format: RGBAFormat,
@@ -1080,6 +1088,7 @@ const createMeshes = () => {
 }
 
 const generatePreset = () => {
+  console.log(bundleSceneIntoJSON());
   //randomizeSettings();
   loadVisualizer(false);
   presetManager.currentPreset = DEFAULT_PRESET_COUNT + presetManager.userPresetCount + 1;
