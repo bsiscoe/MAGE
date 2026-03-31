@@ -24,6 +24,7 @@ import {
   AgXToneMapping,
   NeutralToneMapping,
   log,
+  BoxGeometry,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createSculptureWithGeometry } from 'shader-park-core';
@@ -121,7 +122,7 @@ class MAGEVisualizer {
     ) {
       finalShaderCode = shaderCode.shader;
     } else {
-      finalShaderCode = generateshaderparkcode('generator_v1.1');
+      finalShaderCode = generateshaderparkcode('generator_v1.2');
     }
     if (!finalShaderCode) {
       if (engine.log) console.warn('Invalid shader code input; failed to load visualizer.', { shaderCode });
@@ -268,8 +269,6 @@ export class MAGEEngine {
     this._render = this._render.bind(this);
   }
 
-  // PUBLIC API
-
   start() {
     if (!this.scene) {
       this._createScene();
@@ -284,15 +283,103 @@ export class MAGEEngine {
     }
   }
 
+  getAudioDuration() {
+    if (!this.audio || !this.audio.buffer) {
+      return 0;
+    }
+    const duration = Number(this.audio.buffer.duration);
+    return Number.isFinite(duration) ? duration : 0;
+  }
+
+  getAudioTime() {
+    if (!this.audio || !this.audio.buffer) {
+      return 0;
+    }
+
+    const baseProgress = Number(this.audio._progress) || 0;
+    const liveProgress = this.audio.isPlaying
+      ? Math.max(this.audio.context.currentTime - this.audio._startedAt, 0) * (Number(this.audio.playbackRate) || 1)
+      : 0;
+    const offset = Number(this.audio.offset) || 0;
+    const duration = this.getAudioDuration();
+
+    return Math.max(0, Math.min(duration, offset + baseProgress + liveProgress));
+  }
+
+  seek(time) {
+    const duration = this.getAudioDuration();
+    if (duration <= 0) {
+      return false;
+    }
+
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    this.playbackTime = clampedTime;
+
+    const forwardWasPlaying = Boolean(this.audio.isPlaying);
+    const reverseWasPlaying = Boolean(this.reversedAudio?.isPlaying);
+
+    this.audio.offset = clampedTime;
+
+    if (this.reversedAudio?.buffer) {
+      const reversedTime = Math.max(0, Math.min(duration - clampedTime, this.reversedAudio.buffer.duration));
+      this.reversedAudio.offset = reversedTime;
+    }
+
+    if (forwardWasPlaying) {
+      this.audio.stop();
+    }
+    if (reverseWasPlaying && this.reversedAudio) {
+      this.reversedAudio.stop();
+    }
+
+    if (forwardWasPlaying && reverseWasPlaying) {
+      if (this.isReversed && this.reversedAudio?.buffer) {
+        this.reversedAudio.play();
+      } else {
+        this.audio.play();
+      }
+    } else if (forwardWasPlaying) {
+      this.audio.play();
+    } else if (reverseWasPlaying && this.reversedAudio?.buffer) {
+      this.reversedAudio.play();
+    }
+
+    return true;
+  }
+
+  // Public-facing scrub API alias for external callers.
+  scrubAudio(time) {
+    return this.seek(time);
+  }
+
   play() {
+    if (!this.isAudioLoaded()) {
+      return;
+    }
     if (this.audio && !this.audio.isPlaying) {
       this.audio.play();
     }
   }
 
   pause() {
-    if (this.audio && this.audio.isPlaying) {
+    if (this.audio?.isPlaying) {
       this.audio.pause();
+    }
+    if (this.reversedAudio?.isPlaying) {
+      this.reversedAudio.pause();
+    }
+  }
+
+  isAudioLoaded() {
+    return Boolean(this.audio?.buffer || this.reversedAudio?.buffer || this.audioBuffer);
+  }
+
+  fullscreen() {
+    if (!this.canvas) {
+      return;
+    }
+    else {
+      this.controls?["toggleFullscreen"]?.toggleFullscreen() : toggleFullscreen();
     }
   }
 
@@ -430,6 +517,21 @@ export class MAGEEngine {
     return preset;
   }
 
+  swapCanvas(newCanvas) {
+    if (this.renderer) {
+      this.renderer.domElement.remove();
+      this.renderer.dispose();
+      this.renderer = null;
+    }
+
+    this.canvas = newCanvas;
+    this._createRenderer();
+    if (this.scene && this.camera) {
+      this.composer = effects.applyPostProcessing(this.scene, this.renderer, this.camera, this.composer);
+      this._syncSobelResolution();
+    }
+  }
+
   toPreset({
     includeState = true,
     includeSettings = true,
@@ -501,9 +603,9 @@ export class MAGEEngine {
     }
 
     preset.version = MAGE_VERSION;
-    // if (trackHistory) {
-    //   this._trackSavedPreset(preset);
-    // }
+    if (trackHistory) {
+      this._trackSavedPreset(preset);
+    }
 
     return preset;
   }
@@ -1603,7 +1705,7 @@ export class MAGEEngine {
 
   _loadDefaultVisualizer() {
     // SHADER
-    this.visualizer.load({ shader: generateshaderparkcode('default'), addToHistory: false });
+    this.visualizer.load({ shader: generateshaderparkcode('default'), addToHistory: true });
     this._loadSkybox({ type: 'preset', presetId: 6 });
   }
 
@@ -1685,7 +1787,7 @@ export class MAGEEngine {
 
   _createMeshes() {
     // add shader to geometry
-    const geometry = new SphereGeometry(160, 60, 60);
+    const geometry = new BoxGeometry(20000, 20000, 20000);
     this.visualizer.mesh = createSculptureWithGeometry(geometry, this.visualizer.shader, () => {
       return {
         time: this.state.time,

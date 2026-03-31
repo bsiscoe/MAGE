@@ -151,6 +151,8 @@ textarea {
           <button id="btnStart">start()</button>
           <button id="btnPlay">play()</button>
           <button id="btnPause">pause()</button>
+          <button id="btnFullscreen">toggleFullscreen()</button>
+          <button id="btnTestDock">Create audio test dock</button>
         </div>
       </div>
 
@@ -235,7 +237,7 @@ textarea {
         const canvas = document.createElement('canvas');
         container.appendChild(canvas);
 
-        const { engine } = initMAGE({
+        const { engine, controls } = initMAGE({
             canvas,
             withControls: true,
             autoStart: true,
@@ -246,6 +248,10 @@ textarea {
         log('start() called');
         });
 
+        document.getElementById('btnTestDock').addEventListener('click', () => {
+            controls.createAudioTestDock();
+        });
+
         document.getElementById('btnPlay').addEventListener('click', () => {
         engine.play();
         log('play() called');
@@ -254,6 +260,10 @@ textarea {
         document.getElementById('btnPause').addEventListener('click', () => {
         engine.pause();
         log('pause() called');
+        });
+
+        document.getElementById('btnFullscreen').addEventListener('click', () => {
+            controls.toggleFullscreen();
         });
 
         document.getElementById('btnLoadAudioUrl').addEventListener('click', () => {
