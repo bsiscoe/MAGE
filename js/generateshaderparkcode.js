@@ -1497,7 +1497,7 @@ return shaderCode;
         return shaderCode;
     
       
-    } else if (shader == 'generated-again') {
+    } else if (shader == 'generator_v1.2') {
         const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
         const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
         let shapes = [];

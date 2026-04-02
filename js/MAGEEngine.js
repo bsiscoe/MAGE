@@ -240,6 +240,8 @@ export class MAGEEngine {
       base_speed: 0.2,
       easing_speed: 0.6,
       camTilt: 0.0,
+      camOrientationMode: 0,
+      camOrientationSpeed: 1.0,
     };
 
     this.timeIncreasing = true;
@@ -249,7 +251,9 @@ export class MAGEEngine {
     // Engine Hooks - can be set by external code (e.g. controls.js) to integrate with engine lifecycle and state
     this.onAfterFrame = null;
     this.onPresetLoaded = null;
+    this.cameraUpdateHook = null;
     this.exportSettingsState = null;
+    this.importSettingsState = null;
     this.refreshSettingsUI = null;
     this.viewportWidth = 0;
     this.viewportHeight = 0;
@@ -372,15 +376,6 @@ export class MAGEEngine {
 
   isAudioLoaded() {
     return Boolean(this.audio?.buffer || this.reversedAudio?.buffer || this.audioBuffer);
-  }
-
-  fullscreen() {
-    if (!this.canvas) {
-      return;
-    }
-    else {
-      this.controls?["toggleFullscreen"]?.toggleFullscreen() : toggleFullscreen();
-    }
   }
 
   loadAudio(filePath) {
@@ -530,6 +525,10 @@ export class MAGEEngine {
       this.composer = effects.applyPostProcessing(this.scene, this.renderer, this.camera, this.composer);
       this._syncSobelResolution();
     }
+  }
+
+  getEngineTime() {
+    return this.state.time;
   }
 
   toPreset({
@@ -1022,6 +1021,8 @@ export class MAGEEngine {
         base_speed: this.state.base_speed,
         easing_speed: this.state.easing_speed,
         camTilt: this.state.camTilt,
+        camOrientationMode: this.state.camOrientationMode,
+        camOrientationSpeed: this.state.camOrientationSpeed,
         autoRotate: this.controls?.autoRotate,
         autoRotateSpeed: this.controls?.autoRotateSpeed,
         fov: this.camera?.fov,
@@ -1194,6 +1195,18 @@ export class MAGEEngine {
 //     doc.close();
 //   }
 
+  _setCameraUpFromTilt(tiltValue = this.state?.camTilt) {
+    if (!this.camera || typeof tiltValue !== 'number' || !Number.isFinite(tiltValue)) {
+      return;
+    }
+
+    this.camera.up.set(
+      Math.sin(tiltValue),
+      Math.cos(tiltValue),
+      -Math.sin(tiltValue),
+    );
+  }
+
   _applyCompactIntent(intent) {
     if (!intent || typeof intent !== 'object') {
       return;
@@ -1216,11 +1229,7 @@ export class MAGEEngine {
     }
 
     if (typeof intent.camTilt === 'number' && Number.isFinite(intent.camTilt) && this.camera) {
-      this.camera.up.set(
-        Math.sin(intent.camTilt),
-        Math.cos(intent.camTilt),
-        -Math.sin(intent.camTilt),
-      );
+      this._setCameraUpFromTilt(intent.camTilt);
     }
   }
 
@@ -1831,6 +1840,7 @@ export class MAGEEngine {
     this._syncViewport();
 
     const delta = this.clock.getDelta();
+    this.state.time = delta;
     if (!Number.isFinite(this.state.time_multiplier)) {
       this.state.time_multiplier = 1.0;
     }
@@ -1889,13 +1899,7 @@ export class MAGEEngine {
       this.state.easing_speed * this.state.size +
       this.state.volume_multiplier * 0.01;
 
-    if (bass_input > 0.163) {
-      // keep hook for shake behavior
-      // this._shake();
-      this.controls.update();
-    }
-
-    // this.screenShake.update(this.camera);
+    // Keep controls authoritative for camera motion, then apply tilt orientation once.
     this.controls.update();
 
     // ONLY CHECK PIXEL IF IT INTERSECTS
@@ -1956,6 +1960,10 @@ export class MAGEEngine {
 
     if (this.onAfterFrame) {
       this.onAfterFrame(this);
+    }
+
+    if (this.cameraUpdateHook) {
+      this.cameraUpdateHook(this);
     }
 
     if (this.composer) {
