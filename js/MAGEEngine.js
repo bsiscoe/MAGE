@@ -32,9 +32,27 @@ import { generateshaderparkcode } from './generateshaderparkcode.js';
 import effects from './effects.js';
 import { reverseAudioBuffer } from './helpers.js';
 import { getEmbeddedSkyboxFaces } from './skyboxes.js';
+import { initControls } from './controls.js';
 
 const MAGE_VERSION = '1.1.0';
 
+/**
+ * MAGEPreset is a structured representation of a visualizer preset, encapsulating all necessary information to recreate a specific visualizer configuration,
+ * including controls state, custom settings, engine state, user intent for AI-assisted generation, postprocessing effects configuration, visualizer shader and 
+ * skybox configuration, and associated audio.
+ * @typedef {Object} MAGEPreset
+ * @property {Object} controls - Camera control state (e.g. for OrbitControls: target0, position0, zoom0)
+ * @property {Object} settings - Custom settings state for UI controls (structure defined by external code)
+ * @property {Object} state - Engine state values (e.g. time, pointerDown, etc.) to initialize when loading preset
+ * @property {Object} intent - Compact representation of user intent (e.g. "make it more intense") for AI-assisted preset generation (structure defined by external code)
+ * @property {Object} fx - Compact representation of postprocessing effects configuration (structure defined by external code)
+ * @property {Object} visualizer - Visualizer configuration including shader code and skybox preset
+ * @property {string} visualizer.shader - GLSL shader code for the visualizer
+ * @property {string|Object} visualizer.skyboxPreset - Preset ID or preset object for the skybox to use with this visualizer
+ * @property {number} visualizer.scale - Scale factor for the visualizer mesh
+ * @property {boolean} visualizer.render_tooltips - Whether to render tooltips for this visualizer
+ * @property {string} audioPath - URL or file path to audio to load with this preset
+ */
 export class MAGEPreset {
   constructor({
     controls = null,
@@ -86,6 +104,26 @@ export class MAGEPreset {
   }
 }
 
+/**
+ * MAGEVisualizer manages the visual representation of the audio-reactive shader, including loading shaders, managing shader history, and handling skybox presets. 
+ * It interfaces with the MAGEEngine to create and update the visualizer mesh based on the currently loaded shader and skybox configuration.
+ * @typedef {Object} MAGEVisualizer
+ * @property {MAGEEngine} engine - Reference to the main MAGEEngine instance for accessing scene, renderer, and other core components.
+ * @property {number} shaderIndex - Index of the currently active shader in the shader history.
+ * @property {Array} shaders - History of loaded shaders, each entry containing the shader code, a unique ID, and a timestamp.
+ * @property {string|null} skyboxPreset - Identifier for the currently loaded skybox preset, if any.
+ * @property {THREE.Mesh|null} mesh - The Three.js Mesh object representing the visualizer geometry in the scene.
+ * @property {string|null} shader - The GLSL shader code currently used for the visualizer material.
+ * @property {number} scale - Scale factor applied to the visualizer mesh.
+ * @property {boolean} intersected - Whether the visualizer mesh is currently intersected by the mouse pointer (for interaction purposes).
+ * @property {boolean} clickable - Whether the visualizer mesh is currently clickable (for interaction purposes).
+ * @property {boolean} controllingAudio - Whether the visualizer is currently controlling audio playback (e.g. for play/pause on click).
+ * @property {boolean} render_tooltips - Whether to render tooltips for this visualizer.
+ * @property {number} centerClickRadiusNdc - Normalized device coordinate radius for detecting "center" clicks on the visualizer mesh.
+ * @method load - Loads a new shader into the visualizer, creating/updating the mesh accordingly. Accepts options for adding to shader history and clearing history.
+ * @method previousShader - Loads the previous shader in the history, if available.
+ * @method nextShader - Loads the next shader in the history, if available.
+ */
 class MAGEVisualizer {
   constructor(engine) {
     this.engine = engine;
@@ -183,18 +221,29 @@ class MAGEVisualizer {
   }
 }
 
-// Core runtime for MAGE - responsible for managing Three.js scene, camera, renderer, audio, visualizer state, and more.
+/** 
+ * @typedef {Object} MAGEOptions
+ * @property {HTMLCanvasElement} canvas - The canvas element to render into
+ * @property {boolean} [log=false] - Enable debug logging
+ */
+
+/**
+ * MAGEEngine is the core class of the MAGE Engine, responsible for managing the Three.js scene, camera, renderer, audio, visualizer state, and overall engine lifecycle. 
+ * It provides methods for initializing the engine, loading presets, managing audio playback, and interfacing with the MAGEVisualizer for shader management. 
+ * The engine is designed to be modular and extensible, allowing for integration with external control schemes and UI components.
+ * @typedef {Object} MAGEEngine
+ */
 export class MAGEEngine {
-  constructor(canvas, options = {log: false}) {
+  constructor({ canvas, log = false } = {}) {
     // console log version
-    if (options.log) {
+    if (log) {
       console.log(`Initializing MAGE Engine v${MAGE_VERSION}...`);
     }
 
     // Optional HTMLCanvasElement to render into. If not provided, a canvas
     // will be created and appended to document.body, matching current behavior.
     this.canvas = canvas || null;
-    this.log = options.log || false;
+
 
     // Core Three.js objects
     this.scene = null;
@@ -272,7 +321,10 @@ export class MAGEEngine {
     // Bind render loop so we can use it with requestAnimationFrame
     this._render = this._render.bind(this);
   }
-
+  /**
+   * Initializes the MAGE Engine, creating the Three.js scene, camera, renderer, and other core components.
+   * @return {void}
+   */
   start() {
     if (!this.scene) {
       this._createScene();
@@ -287,6 +339,10 @@ export class MAGEEngine {
     }
   }
 
+  /**
+   * Returns the duration of the currently loaded audio in seconds. If no audio is loaded, returns 0.
+   * @return {number} Duration of the currently loaded audio in seconds, or 0 if no audio is loaded.
+   */
   getAudioDuration() {
     if (!this.audio || !this.audio.buffer) {
       return 0;
@@ -295,6 +351,10 @@ export class MAGEEngine {
     return Number.isFinite(duration) ? duration : 0;
   }
 
+  /**
+   * Returns the current playback time of the audio in seconds, accounting for play/pause state and any seeking. If no audio is loaded, returns 0.
+   * @returns {number} Current playback time of the audio in seconds, or 0 if no audio is loaded.
+   */
   getAudioTime() {
     if (!this.audio || !this.audio.buffer) {
       return 0;
@@ -310,6 +370,11 @@ export class MAGEEngine {
     return Math.max(0, Math.min(duration, offset + baseProgress + liveProgress));
   }
 
+  /**
+   * Seeks to a specific time in the audio.
+   * @param {number} time - The time to seek to, in seconds.
+   * @returns {boolean} True if the seek was successful, false otherwise.
+   */
   seek(time) {
     const duration = this.getAudioDuration();
     if (duration <= 0) {
@@ -351,11 +416,19 @@ export class MAGEEngine {
     return true;
   }
 
-  // Public-facing scrub API alias for external callers.
+  /**
+   * Scrubs the audio to a specific time.
+   * @param {number} time - The time to scrub to, in seconds.
+   * @returns {boolean} True if the scrub was successful, false otherwise.
+   */
   scrubAudio(time) {
     return this.seek(time);
   }
 
+  /**
+   * Plays the currently loaded audio if it is not already playing. If no audio is loaded, this method does nothing.
+   * @returns {void}
+   */
   play() {
     if (!this.isAudioLoaded()) {
       return;
@@ -365,6 +438,10 @@ export class MAGEEngine {
     }
   }
 
+  /**
+   * Pauses the currently playing audio. If no audio is loaded or if the audio is already paused, this method does nothing.
+   * @return {void}
+   */
   pause() {
     if (this.audio?.isPlaying) {
       this.audio.pause();
@@ -374,10 +451,20 @@ export class MAGEEngine {
     }
   }
 
+  /**
+   * Returns whether audio is currently loaded in the engine. This checks for the presence of an audio buffer in either the forward or reversed audio sources, 
+   * or a standalone audioBuffer (used for file uploads).
+   * @returns 
+   */
   isAudioLoaded() {
     return Boolean(this.audio?.buffer || this.reversedAudio?.buffer || this.audioBuffer);
   }
 
+  /**
+   * Loads audio from a file path or uploads a file.
+   * @param {string} [filePath] - The path to the audio file to load.
+   * @returns {void}
+   */
   loadAudio(filePath) {
     const previousVolume = this.audio?.getVolume();
 
@@ -447,6 +534,11 @@ export class MAGEEngine {
     );
   }
 
+  /**
+   * Loads a preset into the engine.
+   * @param {MAGEPreset} presetInput - The preset input to load.
+   * @returns {MAGEPreset} The loaded preset.
+   */
   loadPreset(presetInput) {
     const preset = MAGEPreset.from(presetInput);
 
@@ -512,6 +604,10 @@ export class MAGEEngine {
     return preset;
   }
 
+  /**
+   * Swaps the current canvas with a new one.
+   * @param {HTMLCanvasElement} newCanvas - The new canvas element to use.
+   */
   swapCanvas(newCanvas) {
     if (this.renderer) {
       this.renderer.domElement.remove();
@@ -527,19 +623,31 @@ export class MAGEEngine {
     }
   }
 
+  /**
+   * Return the engine time from state
+   * @returns {number} The engine time.
+   */
   getEngineTime() {
     return this.state.time;
   }
 
+  /**
+   * @typedef {Object} PresetExportSettings
+   * @property {boolean} [includeState=true] - Whether to include the engine state in the exported preset.
+   * @property {boolean} [includeSettings=true] - Whether to include custom settings in the exported preset.
+   * @property {string} [schema='compact'] - The schema format to use for the exported preset ('compact' or 'full').
+   */
+
+  /**
+   * Exports the current engine configuration as a preset object. The exported preset can include the current state, custom settings, and visualizer configuration, 
+   * depending on the specified options. The preset can be returned in a compact format optimized for AI-assisted generation or a full format that includes all details.
+   * @param {PresetExportSettings} exportSettings - Options for what to include in the exported preset and the format to use. 
+   * (not required, defaults to including state and settings in compact format)
+   * @returns {MAGEPreset|Object} The exported preset as a MAGEPreset instance or a compact object depending on the specified schema.
+   */
   toPreset({
     includeState = true,
     includeSettings = true,
-    includeThumbnail = true,
-    thumbnailWidth = 224,
-    thumbnailHeight = 224,
-    thumbnailType = 'image/png',
-    thumbnailQuality = 0.84,
-    // trackHistory = true,
     schema = 'compact',
   } = {}) {
     if (this.controls && this.controls.saveState) {
@@ -581,18 +689,6 @@ export class MAGEEngine {
       preset.state = { ...this.state };
     }
 
-    if (includeThumbnail) {
-      const thumbnailDataUrl = this._captureFramePreviewDataUrlSync({
-        width: thumbnailWidth,
-        height: thumbnailHeight,
-        type: thumbnailType,
-        quality: thumbnailQuality,
-      });
-      if (thumbnailDataUrl) {
-        preset.thumbnailDataUrl = thumbnailDataUrl;
-      }
-    }
-
     if (schema === 'compact') {
       const compact = this._toCompactPreset({ includeState, includeThumbnail, thumbnailDataUrl: preset.thumbnailDataUrl });
       // if (trackHistory) {
@@ -626,6 +722,21 @@ export class MAGEEngine {
   //   return this._presetGalleryWindow;
   // }
 
+  
+  /**
+   * @typedef {Object} CaptureFramePreviewOptions
+   * @property {number} [width = 224] - Width of the captured thumbnail in pixels (default: 224)
+   * @property {number} [height = 224] - Height of the captured thumbnail in pixels (default: 224)
+   * @property {string} [type = 'image/webp'] - MIME type of the output image (default: 'image/webp')
+   * @property {number} [quality = 0.84] - Quality of the output image between 0 and 1 (default: 0.84)
+   * @property {number} [settleFrames = 2] - Number of frames to render after loading preset before capturing thumbnail, to allow for any async loading and shader stabilization (default: 2)
+   */
+
+  /**
+   * 
+   * @param {CaptureFramePreviewOptions} param0 
+   * @returns 
+   */
   async captureFramePreview({
     width = 224,
     height = 126,
@@ -653,6 +764,12 @@ export class MAGEEngine {
     });
   }
 
+  /**
+   * Captures a thumbnail for the current visualizer and returns it as a data URL. 
+   * This is a convenience method that wraps captureFramePreview and converts the resulting Blob to a data URL.
+   * @param {CaptureFramePreviewOptions} options 
+   * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
+   */
   async captureFramePreviewDataUrl(options = {}) {
     const blob = await this.captureFramePreview(options);
     if (!blob) {
@@ -661,6 +778,13 @@ export class MAGEEngine {
     return await this._blobToDataUrl(blob);
   }
 
+  /**
+   * Captures a thumbnail for the given preset. Prefer using current engine state and captureFramePreview when possible, but this method can be used to capture a thumbnail 
+   * for any preset without affecting the current engine state.
+   * @param {MAGEPreset} presetInput 
+   * @param {CaptureFramePreviewOptions} options 
+   * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
+   */
   async captureThumbnail(
     presetInput,
     {
@@ -676,6 +800,15 @@ export class MAGEEngine {
     });
   }
 
+  /**
+   * Captures a thumbnail for a given preset without requiring an instance of MAGEEngine.
+   * @param {MAGEPreset} presetInput 
+   * @param {CaptureFramePreviewOptions} param1 
+   * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
+    * @description This static method captures a thumbnail for a given preset without requiring an instance of MAGEEngine. 
+    * It creates a temporary offscreen canvas and a new MAGEEngine instance to load the preset, render it for a few frames to allow for stabilization, 
+    * and capture the resulting image as a data URL. This is useful for generating thumbnails for presets without affecting the current state of an existing engine instance.
+   */
   static async captureThumbnail(
     presetInput,
     {
@@ -752,7 +885,7 @@ export class MAGEEngine {
     }
   }
 
-  async capturePresetPreviewDataUrl(
+  async _capturePresetPreviewDataUrl(
     presetInput,
     {
       settleFrames = 2,
@@ -809,6 +942,13 @@ export class MAGEEngine {
   // }
 
   // Destroys the engine instance and releases resources. After calling this method, the engine should not be used.
+  
+  /**
+   * Disposes of the MAGE Engine instance, releasing all resources and references to allow for garbage collection. 
+   * This includes disposing of the Three.js renderer, scene, render targets, audio sources, and any other objects 
+   * created by the engine. After calling this method, the engine instance should not be used.
+   * @returns {void}
+   */
   dispose() {
     if (this.renderer) {
       this.renderer.dispose();
@@ -895,6 +1035,9 @@ export class MAGEEngine {
 
 
   // PRIVATE METHODS
+  _createControlPanel() {
+    this.controlPanel = initControls(this);
+  }
 
   _waitFrames(frameCount = 1) {
     const total = Math.max(1, Number.parseInt(`${frameCount}`, 10) || 1);

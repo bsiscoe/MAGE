@@ -11,7 +11,6 @@ const { engine, controls } = initMAGE({
   canvas: document.getElementById('myCanvas'), // Optional: specify a canvas element
   withControls: true, // Optional: include controls (default: true)
   autoStart: true, // Optional: automatically start the engine (default: false)
-  assetBaseUrl: '../resources', // Optional: base URL for assets (default: '../resources')
   options: { log: true } // Optional: additional engine options (default: { log: true })
 });
 
@@ -27,42 +26,34 @@ engine.toPreset() -> returns the current preset as a MAGEPreset instance
 
 
 // Import core components and utilities
-import { MAGEEngine, MAGEPreset } from './MAGEEngine.js';
-import { initControls } from './controls.js';
-import { getEmbeddedPresetById } from './presets.js';
+import MAGEEngine from './MAGEEngine.js';
 
-export { MAGEEngine, MAGEPreset, initControls };
+/**
+ * @typedef {Object} MAGEOptions
+ * @property {HTMLCanvasElement} [canvas] - The canvas element to render into (required)
+ * @property {boolean} [log=false] - Enable debug logging
+ * @property {boolean} [withControls=true] - Enable camera controls
+ * @property {boolean} [autoStart=false] - Automatically start rendering
+ */
 
-export function applyEmbeddedPreset(engine, presetId) {
-  if (!engine || typeof engine.loadPreset !== 'function') {
-    return false;
-  }
-  const preset = getEmbeddedPresetById(presetId);
-  if (!preset) {
-    return false;
-  }
-  return Boolean(engine.loadPreset(preset));
-}
-
-export function initMAGE({
-  canvas,
-  withControls = true,
-  autoStart = false,
-  options = { log: true },
-} = {}) {
+/**
+ * Initialize the MAGE engine
+ * @param {MAGEOptions} options
+ * @returns {MAGEEngine}
+ */
+export function initMAGE(options = {}) {
   // Initialize the MAGE Engine with the provided canvas and configuration options.
-  const engine = new MAGEEngine(canvas, options);
+  const engine = new MAGEEngine(options);
 
   // Controls require initialized renderer/camera/controls
-  if (autoStart || withControls) {
+  if (options.autoStart || options.withControls) {
     engine.start();
   }
 
-  // Initialize controls if requested
-  const controls = withControls
-    ? initControls(engine)
-    : null;
-  
+  if (options.withControls) {
+    engine.controlPanel = engine._createControlPanel();
+  }
+
   // Return the initialized engine and controls (if created) for external use.
-  return { engine, controls };
+  return engine;
 }

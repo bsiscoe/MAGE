@@ -2487,8 +2487,8 @@ class MAGEControls {
   }
 }
 
-// LEGACY INIT CONTROLS
-export function initControls(engine: MAGEEngine) {
+// control object initializer function to keep engine setup organized and separate from control implementation details
+export function initControls(engine: MAGEEngine): MAGEControls {
   const controls = new MAGEControls(engine);
   controls.initTweakpane();
   controls.eventSetup();
