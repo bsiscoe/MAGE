@@ -129,7 +129,8 @@ const DEFAULT_PASS_ORDER = [
 ];
 
 // threejs effects list
-let effects = {
+/** @type {any} */
+const effects = {
   passOrder : [...DEFAULT_PASS_ORDER],
   toneMapping : {
         exposure : 1.5,

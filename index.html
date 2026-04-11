@@ -118,7 +118,7 @@ textarea {
 }
 
 #mage {
-  width: min(1200px, 92vw);
+  width: min(800px, 92vw);
   aspect-ratio: 1 / 1;
   background: #000;
   border-radius: 12px;
@@ -153,6 +153,7 @@ textarea {
           <button id="btnPause">pause()</button>
           <button id="btnFullscreen">toggleFullscreen()</button>
           <button id="btnTestDock">Create audio test dock</button>
+          <button id="initControls">Initialize tweakpane controls</button>
         </div>
       </div>
 
@@ -203,7 +204,7 @@ textarea {
   <input type="file" id="file" style="display:none;" />
 
   <script type="module">
-    import { initMAGE } from "./js/mage-lib.js";
+    import { initMAGE } from "./dist/mage-engine.mjs";
     window.addEventListener('load', () => {
         const logEl = document.getElementById('log');
         const log = message => {
@@ -237,19 +238,16 @@ textarea {
         const canvas = document.createElement('canvas');
         container.appendChild(canvas);
 
-        const { engine, controls } = initMAGE({
-            canvas,
-            withControls: true,
-            autoStart: true,
+        const engine = initMAGE({
+          canvas,
+          log: true,
+          autoStart: true,
+          withControls: true,
         });
 
         document.getElementById('btnStart').addEventListener('click', () => {
         engine.start();
         log('start() called');
-        });
-
-        document.getElementById('btnTestDock').addEventListener('click', () => {
-            controls.createAudioTestDock();
         });
 
         document.getElementById('btnPlay').addEventListener('click', () => {
@@ -263,7 +261,7 @@ textarea {
         });
 
         document.getElementById('btnFullscreen').addEventListener('click', () => {
-            controls.toggleFullscreen();
+            engine.toggleFullscreen();
         });
 
         document.getElementById('btnLoadAudioUrl').addEventListener('click', () => {
@@ -290,6 +288,15 @@ textarea {
         } catch (error) {
             log(`loadPreset failed: ${error.message}`);
         }
+        });
+
+        document.getElementById('initControls').addEventListener('click', () => {
+            if (typeof engine.initControls === 'function') {
+                engine.initControls();
+                log('initControls() called');
+            } else {
+                log('initControls() not available on engine');
+            }
         });
 
         document.getElementById('btnExportPreset').addEventListener('click', () => {

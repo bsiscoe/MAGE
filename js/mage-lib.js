@@ -26,7 +26,7 @@ engine.toPreset() -> returns the current preset as a MAGEPreset instance
 
 
 // Import core components and utilities
-import MAGEEngine from './MAGEEngine.js';
+import { MAGEEngine } from './MAGEEngine.js';
 
 /**
  * @typedef {Object} MAGEOptions
@@ -45,14 +45,12 @@ export function initMAGE(options = {}) {
   // Initialize the MAGE Engine with the provided canvas and configuration options.
   const engine = new MAGEEngine(options);
 
-  // Controls require initialized renderer/camera/controls
   if (options.autoStart || options.withControls) {
-    engine.start();
-  }
-
+      engine.start();
+    }
   if (options.withControls) {
-    engine.controlPanel = engine._createControlPanel();
-  }
+      engine.initControls();
+    }
 
   // Return the initialized engine and controls (if created) for external use.
   return engine;

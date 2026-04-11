@@ -1,4 +1,4 @@
-import {
+﻿import {
   Scene,
   SphereGeometry,
   Vector3,
@@ -32,194 +32,15 @@ import { generateshaderparkcode } from './generateshaderparkcode.js';
 import effects from './effects.js';
 import { reverseAudioBuffer } from './helpers.js';
 import { getEmbeddedSkyboxFaces } from './skyboxes.js';
-import { initControls } from './controls.js';
+import { MAGEVisualizer } from './MAGEVisualizer.js';
+import { MAGEPreset } from './MAGEPreset.js';
+import { Pane } from 'tweakpane';
+import { getEmbeddedPresetById, getEmbeddedPresetIds } from './presets.js';
+import { EMBEDDED_SKYBOXES } from './skyboxes.js';
+const controlTipsImageDataUrl = new URL('../resources/controltips.png', import.meta.url).href;
+
 
 const MAGE_VERSION = '1.1.0';
-
-/**
- * MAGEPreset is a structured representation of a visualizer preset, encapsulating all necessary information to recreate a specific visualizer configuration,
- * including controls state, custom settings, engine state, user intent for AI-assisted generation, postprocessing effects configuration, visualizer shader and 
- * skybox configuration, and associated audio.
- * @typedef {Object} MAGEPreset
- * @property {Object} controls - Camera control state (e.g. for OrbitControls: target0, position0, zoom0)
- * @property {Object} settings - Custom settings state for UI controls (structure defined by external code)
- * @property {Object} state - Engine state values (e.g. time, pointerDown, etc.) to initialize when loading preset
- * @property {Object} intent - Compact representation of user intent (e.g. "make it more intense") for AI-assisted preset generation (structure defined by external code)
- * @property {Object} fx - Compact representation of postprocessing effects configuration (structure defined by external code)
- * @property {Object} visualizer - Visualizer configuration including shader code and skybox preset
- * @property {string} visualizer.shader - GLSL shader code for the visualizer
- * @property {string|Object} visualizer.skyboxPreset - Preset ID or preset object for the skybox to use with this visualizer
- * @property {number} visualizer.scale - Scale factor for the visualizer mesh
- * @property {boolean} visualizer.render_tooltips - Whether to render tooltips for this visualizer
- * @property {string} audioPath - URL or file path to audio to load with this preset
- */
-export class MAGEPreset {
-  constructor({
-    controls = null,
-    settings = null,
-    state = null,
-    intent = null,
-    fx = null,
-    visualizer = null,
-    audioPath = null,
-  } = {}) {
-    this.controls = controls;
-    this.settings = settings;
-    this.state = state;
-    this.intent = intent;
-    this.fx = fx;
-    this.visualizer = visualizer;
-    this.audioPath = audioPath;
-  }
-
-  static from(input) {
-    if (!input) {
-      return null;
-    }
-    if (input instanceof MAGEPreset) {
-      return input;
-    }
-
-    let data = input;
-    if (typeof input === 'string') {
-      try {
-        data = JSON.parse(input);
-      } catch {
-        return null;
-      }
-    }
-    if (!data || typeof data !== 'object') {
-      return null;
-    }
-
-    return new MAGEPreset({
-      controls: data.controls ?? null,
-      settings: data.settings ?? null,
-      state: data.state ?? null,
-      intent: data.intent ?? null,
-      fx: data.fx ?? null,
-      visualizer: data.visualizer ?? null,
-      audioPath: data.audioPath ?? data.audio ?? null,
-    });
-  }
-}
-
-/**
- * MAGEVisualizer manages the visual representation of the audio-reactive shader, including loading shaders, managing shader history, and handling skybox presets. 
- * It interfaces with the MAGEEngine to create and update the visualizer mesh based on the currently loaded shader and skybox configuration.
- * @typedef {Object} MAGEVisualizer
- * @property {MAGEEngine} engine - Reference to the main MAGEEngine instance for accessing scene, renderer, and other core components.
- * @property {number} shaderIndex - Index of the currently active shader in the shader history.
- * @property {Array} shaders - History of loaded shaders, each entry containing the shader code, a unique ID, and a timestamp.
- * @property {string|null} skyboxPreset - Identifier for the currently loaded skybox preset, if any.
- * @property {THREE.Mesh|null} mesh - The Three.js Mesh object representing the visualizer geometry in the scene.
- * @property {string|null} shader - The GLSL shader code currently used for the visualizer material.
- * @property {number} scale - Scale factor applied to the visualizer mesh.
- * @property {boolean} intersected - Whether the visualizer mesh is currently intersected by the mouse pointer (for interaction purposes).
- * @property {boolean} clickable - Whether the visualizer mesh is currently clickable (for interaction purposes).
- * @property {boolean} controllingAudio - Whether the visualizer is currently controlling audio playback (e.g. for play/pause on click).
- * @property {boolean} render_tooltips - Whether to render tooltips for this visualizer.
- * @property {number} centerClickRadiusNdc - Normalized device coordinate radius for detecting "center" clicks on the visualizer mesh.
- * @method load - Loads a new shader into the visualizer, creating/updating the mesh accordingly. Accepts options for adding to shader history and clearing history.
- * @method previousShader - Loads the previous shader in the history, if available.
- * @method nextShader - Loads the next shader in the history, if available.
- */
-class MAGEVisualizer {
-  constructor(engine) {
-    this.engine = engine;
-    this.shaderIndex = -1;
-    this.shaders = [];
-    this.skyboxPreset = null;
-    this.mesh = null;
-    this.shader = null;
-    this.scale = 10.0;
-    this.intersected = false;
-    this.clickable = false;
-    this.controllingAudio = false;
-    this.render_tooltips = true;
-    this.centerClickRadiusNdc = 0.35;
-  }
-
-  load(options = {shader: null, addToHistory: false, clearHistory: false}) {
-    const engine = this.engine;
-    if (engine.log) console.log('Loading visualizer... ');
-
-    // Remove old mesh before creating a new sculpture.
-    if (this.mesh && engine.scene) {
-      engine.scene.remove(this.mesh);
-    }
-
-    // If shader input is missing/invalid, generate one.
-    let finalShaderCode = null;
-    if (typeof options.shader === 'string') {
-      finalShaderCode = options.shader;
-    } else if (
-      shaderCode &&
-      typeof shaderCode === 'object' &&
-      typeof shaderCode.shader === 'string'
-    ) {
-      finalShaderCode = shaderCode.shader;
-    } else {
-      finalShaderCode = generateshaderparkcode('generator_v1.2');
-    }
-    if (!finalShaderCode) {
-      if (engine.log) console.warn('Invalid shader code input; failed to load visualizer.', { shaderCode });
-      return null;
-    }
-    if (options.clearHistory) {
-      this.shaders = [];
-      this.shaderIndex = -1;
-    }
-    if (options.addToHistory) {
-      this.shaders.push({
-        id: engine._idFromShaderCode(finalShaderCode),
-        shader: finalShaderCode,
-        timestamp: Date.now(),
-      });
-      this.shaderIndex = this.shaders.length - 1;
-      if (engine.log) console.log('Active shaders: ', this.shaders);
-    }
-
-    if (engine.log) console.log('Loaded visualizer with shader:', finalShaderCode);
-    this.shader = finalShaderCode;
-    engine._createMeshes();
-    return finalShaderCode;
-  }
-
-  previousShader() {
-    if (this.shaders.length <= 1) {
-      return;
-    }
-    let nextShader;
-    if (this.shaderIndex <= 0) {
-      this.engine._showViewportMessage(`Reached first visualizer.`, 25);
-      return;
-    } else {
-      nextShader = this.shaders[this.shaderIndex - 1];
-      this.shaderIndex--;
-    }
-    this.load({ shader: nextShader.shader, addToHistory: false});
-    this.engine._showViewportMessage(`Loading previous visualizer...`, 25);
-    return;
-  }
-
-  nextShader() {
-    if (this.shaders.length <= 1) {
-      return;
-    }
-    let nextShader;
-    if (this.shaderIndex >= this.shaders.length - 1) {
-      this.engine._showViewportMessage(`Reached latest visualizer.`, 25);
-      return;
-    } else {
-      nextShader = this.shaders[this.shaderIndex + 1];
-      this.shaderIndex++;
-    }
-    this.load({ shader: nextShader.shader, addToHistory: false });
-    this.engine._showViewportMessage(`Loading next visualizer...`, 25);
-    return;
-  }
-}
 
 /** 
  * @typedef {Object} MAGEOptions
@@ -227,13 +48,48 @@ class MAGEVisualizer {
  * @property {boolean} [log=false] - Enable debug logging
  */
 
-/**
- * MAGEEngine is the core class of the MAGE Engine, responsible for managing the Three.js scene, camera, renderer, audio, visualizer state, and overall engine lifecycle. 
- * It provides methods for initializing the engine, loading presets, managing audio playback, and interfacing with the MAGEVisualizer for shader management. 
- * The engine is designed to be modular and extensible, allowing for integration with external control schemes and UI components.
- * @typedef {Object} MAGEEngine
- */
 export class MAGEEngine {
+  #canvas = null;
+  #scene = null;
+  #renderer = null;
+  #composer = null;
+  #camera = null;
+  #controlPanel = null;
+  #renderTarget = null;
+  #rtScene = null;
+  #rtCamera = null;
+  #controls = null;
+  #clock = null;
+  #listener = null;
+  #audio = null;
+  #audioFile = null;
+  #reversedAudio = null;
+  #audioAnalyser = null;
+  #audioBuffer = null;
+  #playbackTime = 0;
+  #isReversed = false;
+  #visualizer = null;
+  #inputs = null;
+  #state = null;
+  #timeIncreasing = true;
+  #screenShake = null;
+  #currentPreset = null;
+  #onAfterFrame = null;
+  #onPresetLoaded = null;
+  #cameraUpdateHook = null;
+  #exportSettingsState = null;
+  #importSettingsState = null;
+  #refreshSettingsUI = null;
+  #viewportWidth = 0;
+  #viewportHeight = 0;
+  #viewportToast = {
+    el: null,
+    visible: false,
+    shownAt: 0,
+    durationMs: 1000,
+    fadeMs: 700,
+  };
+  #_pendingSkyboxLoad = null;
   constructor({ canvas, log = false } = {}) {
     // console log version
     if (log) {
@@ -242,38 +98,40 @@ export class MAGEEngine {
 
     // Optional HTMLCanvasElement to render into. If not provided, a canvas
     // will be created and appended to document.body, matching current behavior.
-    this.canvas = canvas || null;
+    this.#canvas = canvas || null;
 
+    this.#controlPanel = null;
 
     // Core Three.js objects
-    this.scene = null;
-    this.renderer = null;
-    this.composer = null;
-    this.camera = null;
-    this.renderTarget = null;
-    this.rtScene = null;
-    this.rtCamera = null;
-    this.controls = null;
-    this.clock = null;
-    this.listener = null;
+    this.#scene = null;
+    this.#renderer = null;
+    this.#composer = null;
+    this.#camera = null;
+    this.#renderTarget = null;
+    this.#rtScene = null;
+    this.#rtCamera = null;
+    this.#controls = null;
+    this.#clock = null;
+    this.#listener = null;
 
     // Audio state (detailed wiring to be migrated from index.js)
-    this.audio = null;
-    this.reversedAudio = null;
-    this.audioAnalyser = null;
-    this.audioBuffer = null;
-    this.playbackTime = 0;
-    this.isReversed = false;
+    this.#audio = null;
+    this.#audioFile = null;
+    this.#reversedAudio = null;
+    this.#audioAnalyser = null;
+    this.#audioBuffer = null;
+    this.#playbackTime = 0;
+    this.#isReversed = false;
 
-    this.visualizer = new MAGEVisualizer(this);
+    this.#visualizer = new MAGEVisualizer(this);
 
-    this.inputs = {
+    this.#inputs = {
       currMouse: new Vector3(),
       pointerDown: 0.0,
       currPointerDown: 0.0,
     };
 
-    this.state = {
+    this.#state = {
       time_multiplier: 1.0,
       mouse: new Vector3(),
       currMouse: new Vector3(),
@@ -293,49 +151,46 @@ export class MAGEEngine {
       camOrientationSpeed: 1.0,
     };
 
-    this.timeIncreasing = true;
-    this.screenShake = this._createScreenShake();
-    this.currentPreset = null;
+    this.#timeIncreasing = true;
+    this.#screenShake = this.#_createScreenShake();
+    this.#currentPreset = null;
 
     // Engine Hooks - can be set by external code (e.g. controls.js) to integrate with engine lifecycle and state
-    this.onAfterFrame = null;
-    this.onPresetLoaded = null;
-    this.cameraUpdateHook = null;
-    this.exportSettingsState = null;
-    this.importSettingsState = null;
-    this.refreshSettingsUI = null;
-    this.viewportWidth = 0;
-    this.viewportHeight = 0;
-    this.viewportToast = {
+    this.#onAfterFrame = null;
+    this.#onPresetLoaded = null;
+    this.#cameraUpdateHook = null;
+    this.#exportSettingsState = null;
+    this.#importSettingsState = null;
+    this.#refreshSettingsUI = null;
+    this.#viewportWidth = 0;
+    this.#viewportHeight = 0;
+    this.#viewportToast = {
       el: null,
       visible: false,
       shownAt: 0,
       durationMs: 1000,
       fadeMs: 700,
     };
-    this._pendingSkyboxLoad = null;
+    this.#_pendingSkyboxLoad = null;
     // this._previewCaptureQueue = Promise.resolve();
     // this.savedPresets = [];
     // this._presetGalleryWindow = null;
-
-    // Bind render loop so we can use it with requestAnimationFrame
-    this._render = this._render.bind(this);
   }
   /**
    * Initializes the MAGE Engine, creating the Three.js scene, camera, renderer, and other core components.
    * @return {void}
    */
   start() {
-    if (!this.scene) {
-      this._createScene();
-      this.composer = effects.applyPostProcessing(this.scene, this.renderer, this.camera);
-      this._syncSobelResolution();
+    if (!this.#scene) {
+      this.#_createScene();
+      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera);
+      this.#_syncSobelResolution();
     }
 
-    this._render();
+    this.#_render();
 
-    if (!this.currentPreset && !this.visualizer.mesh) {
-      this._loadDefaultPreset();
+    if (!this.#currentPreset && !this.#visualizer.mesh) {
+      this.#_loadDefaultPreset();
     }
   }
 
@@ -344,10 +199,10 @@ export class MAGEEngine {
    * @return {number} Duration of the currently loaded audio in seconds, or 0 if no audio is loaded.
    */
   getAudioDuration() {
-    if (!this.audio || !this.audio.buffer) {
+    if (!this.#audio || !this.#audio.buffer) {
       return 0;
     }
-    const duration = Number(this.audio.buffer.duration);
+    const duration = Number(this.#audio.buffer.duration);
     return Number.isFinite(duration) ? duration : 0;
   }
 
@@ -356,18 +211,7 @@ export class MAGEEngine {
    * @returns {number} Current playback time of the audio in seconds, or 0 if no audio is loaded.
    */
   getAudioTime() {
-    if (!this.audio || !this.audio.buffer) {
-      return 0;
-    }
-
-    const baseProgress = Number(this.audio._progress) || 0;
-    const liveProgress = this.audio.isPlaying
-      ? Math.max(this.audio.context.currentTime - this.audio._startedAt, 0) * (Number(this.audio.playbackRate) || 1)
-      : 0;
-    const offset = Number(this.audio.offset) || 0;
-    const duration = this.getAudioDuration();
-
-    return Math.max(0, Math.min(duration, offset + baseProgress + liveProgress));
+    return this.#playbackTime;
   }
 
   /**
@@ -382,35 +226,35 @@ export class MAGEEngine {
     }
 
     const clampedTime = Math.max(0, Math.min(time, duration));
-    this.playbackTime = clampedTime;
+    this.#playbackTime = clampedTime;
 
-    const forwardWasPlaying = Boolean(this.audio.isPlaying);
-    const reverseWasPlaying = Boolean(this.reversedAudio?.isPlaying);
+    const forwardWasPlaying = Boolean(this.#audio.isPlaying);
+    const reverseWasPlaying = Boolean(this.#reversedAudio?.isPlaying);
 
-    this.audio.offset = clampedTime;
+    this.#audio.offset = clampedTime;
 
-    if (this.reversedAudio?.buffer) {
-      const reversedTime = Math.max(0, Math.min(duration - clampedTime, this.reversedAudio.buffer.duration));
-      this.reversedAudio.offset = reversedTime;
+    if (this.#reversedAudio?.buffer) {
+      const reversedTime = Math.max(0, Math.min(duration - clampedTime, this.#reversedAudio.buffer.duration));
+      this.#reversedAudio.offset = reversedTime;
     }
 
     if (forwardWasPlaying) {
-      this.audio.stop();
+      this.#audio.stop();
     }
-    if (reverseWasPlaying && this.reversedAudio) {
-      this.reversedAudio.stop();
+    if (reverseWasPlaying && this.#reversedAudio) {
+      this.#reversedAudio.stop();
     }
 
     if (forwardWasPlaying && reverseWasPlaying) {
-      if (this.isReversed && this.reversedAudio?.buffer) {
-        this.reversedAudio.play();
+      if (this.#isReversed && this.#reversedAudio?.buffer) {
+        this.#reversedAudio.play();
       } else {
-        this.audio.play();
+        this.#audio.play();
       }
     } else if (forwardWasPlaying) {
-      this.audio.play();
-    } else if (reverseWasPlaying && this.reversedAudio?.buffer) {
-      this.reversedAudio.play();
+      this.#audio.play();
+    } else if (reverseWasPlaying && this.#reversedAudio?.buffer) {
+      this.#reversedAudio.play();
     }
 
     return true;
@@ -433,8 +277,8 @@ export class MAGEEngine {
     if (!this.isAudioLoaded()) {
       return;
     }
-    if (this.audio && !this.audio.isPlaying) {
-      this.audio.play();
+    if (this.#audio && !this.#audio.isPlaying) {
+      this.#audio.play();
     }
   }
 
@@ -443,11 +287,11 @@ export class MAGEEngine {
    * @return {void}
    */
   pause() {
-    if (this.audio?.isPlaying) {
-      this.audio.pause();
+    if (this.#audio?.isPlaying) {
+      this.#audio.pause();
     }
-    if (this.reversedAudio?.isPlaying) {
-      this.reversedAudio.pause();
+    if (this.#reversedAudio?.isPlaying) {
+      this.#reversedAudio.pause();
     }
   }
 
@@ -457,7 +301,7 @@ export class MAGEEngine {
    * @returns 
    */
   isAudioLoaded() {
-    return Boolean(this.audio?.buffer || this.reversedAudio?.buffer || this.audioBuffer);
+    return Boolean(this.#audio?.buffer || this.#reversedAudio?.buffer || this.#audioBuffer);
   }
 
   /**
@@ -466,26 +310,26 @@ export class MAGEEngine {
    * @returns {void}
    */
   loadAudio(filePath) {
-    const previousVolume = this.audio?.getVolume();
+    const previousVolume = this.#audio?.getVolume();
 
     // pause previous audio
-    this.audio?.pause();
-    // this.audio?.dispose();
-    this.reversedAudio?.pause();
-    // this.reversedAudio?.dispose();
+    this.#audio?.pause();
+    // this.#audio?.dispose();
+    this.#reversedAudio?.pause();
+    // this.#reversedAudio?.dispose();
 
     // create an Audio source
-    this.audio = new Audio(this.listener);
-    this.audio.setVolume(previousVolume || 1.0);
-    this.audio.setLoop(false);
+    this.#audio = new Audio(this.#listener);
+    this.#audio.setVolume(previousVolume || 1.0);
+    this.#audio.setLoop(false);
 
     // create reversed audio source
-    this.reversedAudio = new Audio(this.listener);
-    this.reversedAudio.setVolume(previousVolume || 1.0);
-    this.reversedAudio.setLoop(false);
+    this.#reversedAudio = new Audio(this.#listener);
+    this.#reversedAudio.setVolume(previousVolume || 1.0);
+    this.#reversedAudio.setLoop(false);
 
     // create an AudioAnalyser, passing in the sound and desired fftSize
-    this.audioAnalyser = new AudioAnalyser(this.audio, 64);
+    this.#audioAnalyser = new AudioAnalyser(this.#audio, 64);
 
     const audioLoader = new AudioLoader();
     const fileInput = document.getElementById('file');
@@ -499,20 +343,20 @@ export class MAGEEngine {
         event => {
           const reader = new FileReader();
           reader.addEventListener('load', e => {
-            this.audioBuffer = e.target.result;
-            this.audio.context.decodeAudioData(this.audioBuffer, buffer => {
-              this.audio.setBuffer(buffer);
-              this.reversedAudio.setBuffer(reverseAudioBuffer(buffer, this.audio.context));
+            this.#audioBuffer = e.target.result;
+            this.#audio.context.decodeAudioData(this.#audioBuffer, buffer => {
+              this.#audio.setBuffer(buffer);
+              this.#reversedAudio.setBuffer(reverseAudioBuffer(buffer, this.#audio.context));
             });
           });
-          this.audioFile = event.target.files[0];
-          reader.readAsArrayBuffer(this.audioFile);
+          this.#audioFile = event.target.files[0];
+          reader.readAsArrayBuffer(this.#audioFile);
         },
         { once: true },
       );
 
       fileInput.click();
-      this.audio.autoplay = true;
+      this.#audio.autoplay = true;
       return;
     }
 
@@ -520,9 +364,9 @@ export class MAGEEngine {
     audioLoader.load(
       filePath,
       buffer => {
-        this.audio.setBuffer(buffer);
-        this.reversedAudio.setBuffer(
-          reverseAudioBuffer(buffer, this.listener.context),
+        this.#audio.setBuffer(buffer);
+        this.#reversedAudio.setBuffer(
+          reverseAudioBuffer(buffer, this.#listener.context),
         );
       },
       () => {
@@ -542,63 +386,63 @@ export class MAGEEngine {
   loadPreset(presetInput) {
     const preset = MAGEPreset.from(presetInput);
 
-    if (!preset) {  
+    if (!preset) {
       const message = 'Invalid preset input: must be a JSON string, object literal, or MAGEPreset instance.';
       if (this.log) console.warn('[MAGEEngine.loadPreset] ' + message, { input: presetInput });
       return;
     }
 
-    this.currentPreset = preset;
+    this.#currentPreset = preset;
 
     if (preset.controls) {
-      this._loadControls(preset.controls);
+      this.#_loadControls(preset.controls);
     }
 
     if (preset.visualizer) {
       if (preset.visualizer.skyboxPreset !== undefined && preset.visualizer.skyboxPreset !== null) {
-        const normalizedSkybox = this._normalizeSkyboxInput(preset.visualizer.skyboxPreset);
+        const normalizedSkybox = this.#_normalizeSkyboxInput(preset.visualizer.skyboxPreset);
         if (normalizedSkybox) {
-          this._loadSkybox(normalizedSkybox);
-        } else if (this.log) 
+          this.#_loadSkybox(normalizedSkybox);
+        } else if (this.log)
           console.warn('[MAGEEngine.loadPreset] Invalid skyboxPreset input; expected preset id, preset path, or { type, presetId }', { input: preset.visualizer.skyboxPreset });
       }
       if (preset.visualizer.shader) {
-        this.visualizer.load({ shader: preset.visualizer.shader, addToHistory: true, clearHistory: true });
+        this.#visualizer.load({ shader: preset.visualizer.shader, addToHistory: true, clearHistory: true });
       }
       if (typeof preset.visualizer.scale === 'number') {
-        this.visualizer.scale = preset.visualizer.scale;
+        this.#visualizer.scale = preset.visualizer.scale;
       }
     }
 
     if (preset.state) {
-      this._applyStatePatch(preset.state, { applied: [], warnings: [] });
+      this.#_applyStatePatch(preset.state, { applied: [], warnings: [] });
     }
 
-    if (typeof this.importSettingsState === 'function' && preset.settings) {
-      this.importSettingsState(preset.settings);
+    if (typeof this.#importSettingsState === 'function' && preset.settings) {
+      this.#importSettingsState(preset.settings);
     }
 
     if (preset.intent) {
-      this._applyCompactIntent(preset.intent);
+      this.#_applyCompactIntent(preset.intent);
     }
 
     if (preset.fx) {
-      this._applyCompactFx(preset.fx);
+      this.#_applyCompactFx(preset.fx);
     }
 
     // if (preset.audioPath) {
     //   this.loadAudio(preset.audioPath);
     // }
 
-    this._syncPostProcessingFromState();
-    this._syncSobelResolution();
+    this.#_syncPostProcessingFromState();
+    this.#_syncSobelResolution();
 
-    if (typeof this.refreshSettingsUI === 'function') {
-      this.refreshSettingsUI();
+    if (typeof this.#refreshSettingsUI === 'function') {
+      this.#refreshSettingsUI();
     }
 
-    if (typeof this.onPresetLoaded === 'function') {
-      this.onPresetLoaded(preset);
+    if (typeof this.#onPresetLoaded === 'function') {
+      this.#onPresetLoaded(preset);
     }
 
     return preset;
@@ -609,17 +453,38 @@ export class MAGEEngine {
    * @param {HTMLCanvasElement} newCanvas - The new canvas element to use.
    */
   swapCanvas(newCanvas) {
-    if (this.renderer) {
-      this.renderer.domElement.remove();
-      this.renderer.dispose();
-      this.renderer = null;
+    if (this.#renderer) {
+      this.#renderer.domElement.remove();
+      this.#renderer.dispose();
+      this.#renderer = null;
     }
 
-    this.canvas = newCanvas;
+    this.#canvas = newCanvas;
     this._createRenderer();
-    if (this.scene && this.camera) {
-      this.composer = effects.applyPostProcessing(this.scene, this.renderer, this.camera, this.composer);
-      this._syncSobelResolution();
+    if (this.#scene && this.#camera) {
+      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#_syncSobelResolution();
+    }
+  }
+
+  /**
+   * Toggles fullscreen mode for the engine's canvas. If the canvas is not currently in fullscreen, it will request fullscreen. If it is already in fullscreen, it will exit fullscreen.
+   * Note: Fullscreen behavior may vary across browsers and may require user interaction to trigger. This method does not handle browser-specific fullscreen API differences or 
+   * potential errors that may arise from fullscreen requests.
+   * @returns {void}
+   */
+  toggleFullscreen() {
+    if (!this.#canvas) {
+      return;
+    }
+    if (!document.fullscreenElement) {
+      this.#canvas.requestFullscreen().catch(err => {
+        console.error('Error attempting to enable fullscreen mode:', err);
+      });
+    } else {
+      document.exitFullscreen().catch(err => {
+        console.error('Error attempting to exit fullscreen mode:', err);
+      });
     }
   }
 
@@ -628,7 +493,7 @@ export class MAGEEngine {
    * @returns {number} The engine time.
    */
   getEngineTime() {
-    return this.state.time;
+    return this.#state.time;
   }
 
   /**
@@ -650,32 +515,32 @@ export class MAGEEngine {
     includeSettings = true,
     schema = 'compact',
   } = {}) {
-    if (this.controls && this.controls.saveState) {
-      this.controls.saveState();
+    if (this.#controls && this.#controls.saveState) {
+      this.#controls.saveState();
     }
 
-    const controlsState = this.controls
+    const controlsState = this.#controls
       ? {
-          target0: this.controls.target0,
-          position0: this.controls.position0,
-          zoom0: this.controls.zoom0,
-        }
+        target0: this.#controls.target0,
+        position0: this.#controls.position0,
+        zoom0: this.#controls.zoom0,
+      }
       : null;
 
     const preset = {
       visualizer: {
-        shader: this.visualizer.shader,
-        skyboxPreset: this.visualizer.skyboxPreset,
-        scale: this.visualizer.scale,
-        render_tooltips: this.visualizer.render_tooltips,
+        shader: this.#visualizer.shader,
+        skyboxPreset: this.#visualizer.skyboxPreset,
+        scale: this.#visualizer.scale,
+        render_tooltips: this.#visualizer.render_tooltips,
       },
       controls: controlsState,
     };
 
     if (includeSettings) {
       try {
-        const settings = this.exportSettingsState();
-        if (typeof this.exportSettingsState === 'function' && settings) {
+        const settings = this.#exportSettingsState();
+        if (typeof this.#exportSettingsState === 'function' && settings) {
           preset.settings = settings;
         }
       } catch (error) {
@@ -686,11 +551,11 @@ export class MAGEEngine {
     console.log('Generated preset from current state:', preset);
 
     if (includeState) {
-      preset.state = { ...this.state };
+      preset.state = { ...this.#state };
     }
 
     if (schema === 'compact') {
-      const compact = this._toCompactPreset({ includeState, includeThumbnail, thumbnailDataUrl: preset.thumbnailDataUrl });
+      const compact = this.#_toCompactPreset({ includeState, includeThumbnail, thumbnailDataUrl: preset.thumbnailDataUrl });
       // if (trackHistory) {
       //   this._trackSavedPreset(compact);
       // }
@@ -705,8 +570,24 @@ export class MAGEEngine {
     return preset;
   }
 
+  showViewportMessage(message, durationMs = 1000) {
+    this.#_ensureViewportToast();
+    if (!this.#viewportToast.el) {
+      return;
+    }
+
+    this.#viewportToast.durationMs =
+      Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 1000;
+    this.#viewportToast.shownAt = performance.now();
+    this.#viewportToast.visible = true;
+
+    this.#viewportToast.el.textContent = String(message ?? '');
+    this.#viewportToast.el.style.opacity = '1';
+    this.#viewportToast.el.style.display = 'block';
+  }
+
   // getSavedPresets() {
-  //   return this.savedPresets.map(entry => this._safeDeepClone(entry));
+  //   return this.savedPresets.map(entry => this.#_safeDeepClone(entry));
   // }
 
   // openSavedPresetsWindow() {
@@ -718,37 +599,32 @@ export class MAGEEngine {
   //     this._presetGalleryWindow = window.open('', 'mage-saved-presets', 'width=560,height=700,resizable=yes,scrollbars=yes');
   //   }
 
-  //   this._renderSavedPresetsWindow();
+  //   this.#_renderSavedPresetsWindow();
   //   return this._presetGalleryWindow;
   // }
 
-  
+
   /**
    * @typedef {Object} CaptureFramePreviewOptions
    * @property {number} [width = 224] - Width of the captured thumbnail in pixels (default: 224)
    * @property {number} [height = 224] - Height of the captured thumbnail in pixels (default: 224)
-   * @property {string} [type = 'image/webp'] - MIME type of the output image (default: 'image/webp')
+   * @property {string} [type = 'image/png'] - MIME type of the output image (default: 'image/png')
    * @property {number} [quality = 0.84] - Quality of the output image between 0 and 1 (default: 0.84)
    * @property {number} [settleFrames = 2] - Number of frames to render after loading preset before capturing thumbnail, to allow for any async loading and shader stabilization (default: 2)
    */
 
-  /**
-   * 
-   * @param {CaptureFramePreviewOptions} param0 
-   * @returns 
-   */
-  async captureFramePreview({
+  async #_captureFramePreviewBlob({
     width = 224,
-    height = 126,
-    type = 'image/webp',
+    height = 224,
+    type = 'image/png',
     quality = 0.84,
   } = {}) {
-    if (!this.renderer?.domElement) {
+    if (!this.#renderer?.domElement) {
       return null;
     }
 
     const w = Math.max(1, Number.parseInt(`${width}`, 10) || 224);
-    const h = Math.max(1, Number.parseInt(`${height}`, 10) || 126);
+    const h = Math.max(1, Number.parseInt(`${height}`, 10) || 224);
 
     const canvas = document.createElement('canvas');
     canvas.width = w;
@@ -758,7 +634,7 @@ export class MAGEEngine {
       return null;
     }
 
-    context.drawImage(this.renderer.domElement, 0, 0, w, h);
+    context.drawImage(this.#renderer.domElement, 0, 0, w, h);
     return await new Promise(resolve => {
       canvas.toBlob(blob => resolve(blob), type, quality);
     });
@@ -766,16 +642,16 @@ export class MAGEEngine {
 
   /**
    * Captures a thumbnail for the current visualizer and returns it as a data URL. 
-   * This is a convenience method that wraps captureFramePreview and converts the resulting Blob to a data URL.
+   * This is a convenience method that wraps captureFramePreviewBlob and converts the resulting Blob to a data URL.
    * @param {CaptureFramePreviewOptions} options 
    * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
    */
-  async captureFramePreviewDataUrl(options = {}) {
-    const blob = await this.captureFramePreview(options);
+  async captureFramePreview(options = {}) {
+    const blob = await this.#_captureFramePreviewBlob(options);
     if (!blob) {
       return null;
     }
-    return await this._blobToDataUrl(blob);
+    return await this.#_blobToDataUrl(blob);
   }
 
   /**
@@ -803,7 +679,7 @@ export class MAGEEngine {
   /**
    * Captures a thumbnail for a given preset without requiring an instance of MAGEEngine.
    * @param {MAGEPreset} presetInput 
-   * @param {CaptureFramePreviewOptions} param1 
+   * @param {CaptureFramePreviewOptions} [options] 
    * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
     * @description This static method captures a thumbnail for a given preset without requiring an instance of MAGEEngine. 
     * It creates a temporary offscreen canvas and a new MAGEEngine instance to load the preset, render it for a few frames to allow for stabilization, 
@@ -822,31 +698,31 @@ export class MAGEEngine {
     }
 
     const w = Math.max(1, Number.parseInt(`${width}`, 10) || 224);
-    const h = Math.max(1, Number.parseInt(`${height}`, 10) || 126);
+    const h = Math.max(1, Number.parseInt(`${height}`, 10) || 224);
 
     const offscreenCanvas = document.createElement('canvas');
     offscreenCanvas.width = w;
     offscreenCanvas.height = h;
 
-    const thumbnailEngine = new MAGEEngine(offscreenCanvas, { log: false });
+    const thumbnailEngine = new MAGEEngine({ canvas: offscreenCanvas, log: false });
 
     try {
-      thumbnailEngine._createScene();
+      thumbnailEngine.#_createScene();
       // Use a fixed pixel ratio for deterministic output across devices.
-      thumbnailEngine.renderer.setPixelRatio(1);
-      thumbnailEngine._syncViewport(true);
+      thumbnailEngine.#renderer.setPixelRatio(1);
+      thumbnailEngine.#_syncViewport(true);
 
-      thumbnailEngine.composer = effects.applyPostProcessing(
-        thumbnailEngine.scene,
-        thumbnailEngine.renderer,
-        thumbnailEngine.camera,
+      thumbnailEngine.#composer = effects.applyPostProcessing(
+        thumbnailEngine.#scene,
+        thumbnailEngine.#renderer,
+        thumbnailEngine.#camera,
       );
-      thumbnailEngine._syncSobelResolution();
+      thumbnailEngine.#_syncSobelResolution();
 
       // Normalize interaction-driven runtime behavior for deterministic captures.
-      if (thumbnailEngine.controls) {
-        thumbnailEngine.controls.enabled = false;
-        thumbnailEngine.controls.autoRotate = false;
+      if (thumbnailEngine.#controls) {
+        thumbnailEngine.#controls.enabled = false;
+        thumbnailEngine.#controls.autoRotate = false;
       }
 
       const loadedPreset = thumbnailEngine.loadPreset(presetInput);
@@ -855,50 +731,34 @@ export class MAGEEngine {
       }
 
       // Re-apply postprocessing graph after preset load to ensure pass toggles/settings are reflected.
-      thumbnailEngine._syncPostProcessingFromState();
+      thumbnailEngine.#_syncPostProcessingFromState();
 
       // Wait for async skybox texture loading so background is present in thumbnail output.
-      await thumbnailEngine._waitForPendingSkyboxLoad(2000);
+      await thumbnailEngine.#_waitForPendingSkyboxLoad(2000);
 
       //use deterministic neutral defaults instead of runtime-derived values.
-      thumbnailEngine.state.time = 0.0;
-      thumbnailEngine.state.pointerDown = 1.0;
-      thumbnailEngine.state.currPointerDown = 1.0;
-      
+      thumbnailEngine.#state.time = 0.0;
+      thumbnailEngine.#state.pointerDown = 1.0;
+      thumbnailEngine.#state.currPointerDown = 1.0;
+
       // increase size by nominal amount to prevent completely flat visualizer output for presets that derive size from audio or interactions.
-      thumbnailEngine.state.size += 0.05;
+      thumbnailEngine.#state.size += 0.05;
 
       const frames = Math.max(1, Number.parseInt(`${settleFrames}`, 10) || 2);
       for (let i = 0; i < frames; i += 1) {
-        thumbnailEngine._renderSingleFrame();
+        thumbnailEngine.#_renderSingleFrame();
       }
 
-      return thumbnailEngine._captureFramePreviewDataUrlSync({
+      return thumbnailEngine.#_captureFramePreviewDataUrlSync({
         width: w,
         height: h,
         type: 'image/png',
         quality: 1,
       });
     } finally {
-      thumbnailEngine._disposeForThumbnailCapture();
+      thumbnailEngine.#_disposeForThumbnailCapture();
       offscreenCanvas.remove();
     }
-  }
-
-  async _capturePresetPreviewDataUrl(
-    presetInput,
-    {
-      settleFrames = 2,
-      width = 224,
-      height = 224,
-    } = {},
-  ) {
-    // Backward-compatible alias for deterministic preset capture.
-    return await this.captureThumbnail(presetInput, {
-      settleFrames,
-      width,
-      height,
-    });
   }
 
   // async buildPresetPreviewMap(
@@ -942,7 +802,7 @@ export class MAGEEngine {
   // }
 
   // Destroys the engine instance and releases resources. After calling this method, the engine should not be used.
-  
+
   /**
    * Disposes of the MAGE Engine instance, releasing all resources and references to allow for garbage collection. 
    * This includes disposing of the Three.js renderer, scene, render targets, audio sources, and any other objects 
@@ -950,15 +810,15 @@ export class MAGEEngine {
    * @returns {void}
    */
   dispose() {
-    if (this.renderer) {
-      this.renderer.dispose();
-      this.renderer.forceContextLoss();
-      this.renderer.context = null;
-      this.renderer.domElement = null;
-      this.renderer = null;
-    } 
-    if (this.scene) {
-      this.scene.traverse(object => {
+    if (this.#renderer) {
+      this.#renderer.dispose();
+      this.#renderer.forceContextLoss();
+      this.#renderer.context = null;
+      this.#renderer.domElement = null;
+      this.#renderer = null;
+    }
+    if (this.#scene) {
+      this.#scene.traverse(object => {
         if (object.geometry) {
           object.geometry.dispose();
         }
@@ -970,14 +830,14 @@ export class MAGEEngine {
           }
         }
       });
-      this.scene = null;
+      this.#scene = null;
     }
-    if (this.renderTarget) {
-      this.renderTarget.dispose();
-      this.renderTarget = null;
+    if (this.#renderTarget) {
+      this.#renderTarget.dispose();
+      this.#renderTarget = null;
     }
-    if (this.rtScene) {
-      this.rtScene.traverse(object => {
+    if (this.#rtScene) {
+      this.#rtScene.traverse(object => {
         if (object.geometry) {
           object.geometry.dispose();
         }
@@ -987,45 +847,45 @@ export class MAGEEngine {
           } else {
             object.material.dispose();
           }
-        }      
+        }
       });
-      this.rtScene = null;
+      this.#rtScene = null;
     }
-    if (this.rtCamera) {
-      this.rtCamera = null;
+    if (this.#rtCamera) {
+      this.#rtCamera = null;
     }
-    if (this.camera) {
-      this.camera = null;
+    if (this.#camera) {
+      this.#camera = null;
     }
-    if (this.controls) {
-      this.controls.dispose();
-      this.controls = null;
+    if (this.#controls) {
+      this.#controls.dispose();
+      this.#controls = null;
     }
-    if (this.listener) {
-      this.listener = null;
+    if (this.#listener) {
+      this.#listener = null;
     }
-    if (this.audio) {
-      this.audio.stop();
-      this.audio.disconnect();
-      this.audio = null;
+    if (this.#audio) {
+      this.#audio.stop();
+      this.#audio.disconnect();
+      this.#audio = null;
     }
-    if (this.reversedAudio) {
-      this.reversedAudio.stop();
-      this.reversedAudio.disconnect();
-      this.reversedAudio = null;
+    if (this.#reversedAudio) {
+      this.#reversedAudio.stop();
+      this.#reversedAudio.disconnect();
+      this.#reversedAudio = null;
     }
-    if (this.audioAnalyser) {
-      this.audioAnalyser = null;
+    if (this.#audioAnalyser) {
+      this.#audioAnalyser = null;
     }
-    if (this.visualizer) {
-      this.visualizer.mesh = null;
-      this.visualizer.shader = null;
-      this.visualizer.shaders = [];
+    if (this.#visualizer) {
+      this.#visualizer.mesh = null;
+      this.#visualizer.shader = null;
+      this.#visualizer.shaders = [];
     }
-    this.state = null;
-    this.inputs = null;
-    this.screenShake = null;
-    this.currentPreset = null;
+    this.#state = null;
+    this.#inputs = null;
+    this.#screenShake = null;
+    this.#currentPreset = null;
     // this._previewCaptureQueue = null;
     // this.savedPresets = [];
     // this._presetGalleryWindow = null;
@@ -1033,13 +893,12 @@ export class MAGEEngine {
     if (this.log) console.log('MAGE Engine disposed and resources released.');
   }
 
-
   // PRIVATE METHODS
-  _createControlPanel() {
-    this.controlPanel = initControls(this);
+  #_createControlPanel() {
+    this.#controlPanel = this.initControls();
   }
 
-  _waitFrames(frameCount = 1) {
+  #_waitFrames(frameCount = 1) {
     const total = Math.max(1, Number.parseInt(`${frameCount}`, 10) || 1);
     return new Promise(resolve => {
       let remaining = total;
@@ -1055,19 +914,19 @@ export class MAGEEngine {
     });
   }
 
-  _waitForPendingSkyboxLoad(timeoutMs = 2000) {
-    if (!this._pendingSkyboxLoad) {
+  #_waitForPendingSkyboxLoad(timeoutMs = 2000) {
+    if (!this.#_pendingSkyboxLoad) {
       return Promise.resolve();
     }
 
     const timeout = Math.max(0, Number.parseInt(`${timeoutMs}`, 10) || 0);
     return Promise.race([
-      this._pendingSkyboxLoad.catch(() => undefined),
+      this.#_pendingSkyboxLoad.catch(() => undefined),
       new Promise(resolve => setTimeout(resolve, timeout)),
     ]);
   }
 
-  _blobToDataUrl(blob) {
+  #_blobToDataUrl(blob) {
     return new Promise(resolve => {
       const reader = new FileReader();
       reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
@@ -1076,99 +935,83 @@ export class MAGEEngine {
     });
   }
 
-  _renderSingleFrame() {
-    if (!this.renderer || !this.scene || !this.camera) {
+  #_renderSingleFrame() {
+    if (!this.#renderer || !this.#scene || !this.#camera) {
       return;
     }
-    this._syncViewport();
-    this._syncSobelResolution();
-    if (this.composer) {
-      this.composer.render(this.scene, this.camera);
+    this.#_syncViewport();
+    this.#_syncSobelResolution();
+    if (this.#composer) {
+      this.#composer.render(this.#scene, this.#camera);
     } else {
-      this.renderer.render(this.scene, this.camera);
+      this.#renderer.render(this.#scene, this.#camera);
     }
   }
 
-  _showViewportMessage(message, durationMs = 1000) {
-    this._ensureViewportToast();
-    if (!this.viewportToast.el) {
+  #_hideViewportMessage() {
+    this.#_ensureViewportToast();
+    if (!this.#viewportToast.el) {
+      return;
+    }
+    this.#viewportToast.visible = false;
+    this.#viewportToast.el.style.opacity = '0';
+    this.#viewportToast.el.style.display = 'none';
+  }
+
+  #_syncPostProcessingFromState() {
+    if (!this.#renderer || !this.#scene || !this.#camera) {
       return;
     }
 
-    this.viewportToast.durationMs =
-      Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 1000;
-    this.viewportToast.shownAt = performance.now();
-    this.viewportToast.visible = true;
+    this.#renderer.toneMapping = effects.toneMapping.method;
 
-    this.viewportToast.el.textContent = String(message ?? '');
-    this.viewportToast.el.style.opacity = '1';
-    this.viewportToast.el.style.display = 'block';
-  }
-
-  _hideViewportMessage() {
-    this._ensureViewportToast();
-    if (!this.viewportToast.el) {
-      return;
-    }
-    this.viewportToast.visible = false;
-    this.viewportToast.el.style.opacity = '0';
-    this.viewportToast.el.style.display = 'none';
-  }
-
-  _syncPostProcessingFromState() {
-    if (!this.renderer || !this.scene || !this.camera) {
-      return;
+    if (this.#composer) {
+      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
     }
 
-    this.renderer.toneMapping = effects.toneMapping.method;
-
-    if (this.composer) {
-      this.composer = effects.applyPostProcessing(this.scene, this.renderer, this.camera, this.composer);
-    }
-
-    this._syncSobelResolution();
+    this.#_syncSobelResolution();
   }
 
-  _syncSobelResolution() {
-    if (!this.renderer || !effects.sobelShader?.shader?.uniforms?.resolution?.value) {
+  #_syncSobelResolution() {
+    if (!this.#renderer || !effects.sobelShader?.shader?.uniforms?.resolution?.value) {
       return;
     }
 
     const resolution = effects.sobelShader.shader.uniforms.resolution.value;
-    const bufferWidth = this.renderer.domElement?.width || Math.max(1, Math.floor(window.innerWidth * window.devicePixelRatio));
-    const bufferHeight = this.renderer.domElement?.height || Math.max(1, Math.floor(window.innerHeight * window.devicePixelRatio));
+    const bufferWidth = this.#renderer.domElement?.width || Math.max(1, Math.floor(window.innerWidth * window.devicePixelRatio));
+    const bufferHeight = this.#renderer.domElement?.height || Math.max(1, Math.floor(window.innerHeight * window.devicePixelRatio));
     resolution.x = bufferWidth;
     resolution.y = bufferHeight;
   }
 
-  _toCompactPreset({ includeState = false, includeThumbnail = false, thumbnailDataUrl = null } = {}) {
+  #_toCompactPreset({ includeState = false, includeThumbnail = false, thumbnailDataUrl = null } = {}) {
     const compact = {
       version: MAGE_VERSION,
       visualizer: {
-        shader: this.visualizer.shader,
-        skyboxPreset: this.visualizer.skyboxPreset,
-        scale: this.visualizer.scale,
+        shader: this.#visualizer.shader,
+        skyboxPreset: this.#visualizer.skyboxPreset,
+        scale: this.#visualizer.scale,
       },
-      controls: this.controls
+      controls: this.#controls
         ? {
-            target0: this.controls.target0,
-            position0: this.controls.position0,
-            zoom0: this.controls.zoom0,
-          }
+          target0: this.#controls.target0,
+          position0: this.#controls.position0,
+          zoom0: this.#controls.zoom0,
+        }
         : null,
       intent: {
-        time_multiplier: this.state.time_multiplier,
-        minimizing_factor: this.state.minimizing_factor,
-        power_factor: this.state.power_factor,
-        pointerDownMultiplier: this.state.pointerDownMultiplier,
-        base_speed: this.state.base_speed,
-        easing_speed: this.state.easing_speed,
-        camTilt: this.state.camTilt,
-        camOrientationMode: this.state.camOrientationMode,
-        camOrientationSpeed: this.state.camOrientationSpeed,
-        autoRotate: this.controls?.autoRotate,
-        autoRotateSpeed: this.controls?.autoRotateSpeed,
-        fov: this.camera?.fov,
+        time_multiplier: this.#state.time_multiplier,
+        minimizing_factor: this.#state.minimizing_factor,
+        power_factor: this.#state.power_factor,
+        pointerDownMultiplier: this.#state.pointerDownMultiplier,
+        base_speed: this.#state.base_speed,
+        easing_speed: this.#state.easing_speed,
+        camTilt: this.#state.camTilt,
+        camOrientationMode: this.#state.camOrientationMode,
+        camOrientationSpeed: this.#state.camOrientationSpeed,
+        autoRotate: this.#controls?.autoRotate,
+        autoRotateSpeed: this.#controls?.autoRotateSpeed,
+        fov: this.#camera?.fov,
       },
       fx: {
         passOrder: effects.getPassOrder(),
@@ -1180,7 +1023,7 @@ export class MAGEEngine {
         },
         toneMapping: {
           method: effects.toneMapping.method,
-          exposure: this.renderer?.toneMappingExposure,
+          exposure: this.#renderer?.toneMappingExposure,
         },
         passes: {
           rgbShift: effects.RGBShift.enabled,
@@ -1216,7 +1059,7 @@ export class MAGEEngine {
     };
 
     if (includeState) {
-      compact.state = { ...this.state };
+      compact.state = { ...this.#state };
     }
 
     if (includeThumbnail && thumbnailDataUrl) {
@@ -1226,22 +1069,22 @@ export class MAGEEngine {
     return compact;
   }
 
-  _captureFramePreviewDataUrlSync({
+  #_captureFramePreviewDataUrlSync({
     width = 224,
-    height = 126,
+    height = 224,
     type = 'image/png',
     quality = 0.84,
   } = {}) {
-    if (!this.renderer?.domElement) {
+    if (!this.#renderer?.domElement) {
       return null;
     }
 
     try {
       // Ensure a fresh frame has been drawn before reading the canvas snapshot.
-      this._renderSingleFrame();
+      this.#_renderSingleFrame();
 
       const w = Math.max(1, Number.parseInt(`${width}`, 10) || 224);
-      const h = Math.max(1, Number.parseInt(`${height}`, 10) || 126);
+      const h = Math.max(1, Number.parseInt(`${height}`, 10) || 224);
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
@@ -1250,7 +1093,7 @@ export class MAGEEngine {
         return null;
       }
 
-      context.drawImage(this.renderer.domElement, 0, 0, w, h);
+      context.drawImage(this.#renderer.domElement, 0, 0, w, h);
       return canvas.toDataURL(type, quality);
     } catch {
       return null;
@@ -1262,13 +1105,13 @@ export class MAGEEngine {
   //     return;
   //   }
 
-  //   const cloned = this._safeDeepClone(preset);
+  //   const cloned = this.#_safeDeepClone(preset);
   //   cloned._savedAt = new Date().toISOString();
   //   this.savedPresets.push(cloned);
-  //   this._renderSavedPresetsWindow();
+  //   this.#_renderSavedPresetsWindow();
   // }
 
-  _safeDeepClone(value) {
+  #_safeDeepClone(value) {
     try {
       return JSON.parse(JSON.stringify(value));
     } catch {
@@ -1276,7 +1119,7 @@ export class MAGEEngine {
     }
   }
 
-  _escapeHtml(text) {
+  #_escapeHtml(text) {
     return String(text)
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -1285,98 +1128,98 @@ export class MAGEEngine {
       .replaceAll("'", '&#39;');
   }
 
-//   _renderSavedPresetsWindow() {
-//     if (!this._presetGalleryWindow || this._presetGalleryWindow.closed) {
-//       return;
-//     }
+  //   #_renderSavedPresetsWindow() {
+  //     if (!this._presetGalleryWindow || this._presetGalleryWindow.closed) {
+  //       return;
+  //     }
 
-//     const doc = this._presetGalleryWindow.document;
-//     const items = this.savedPresets
-//       .map((preset, index) => {
-//         const thumb = typeof preset.thumbnailDataUrl === 'string' ? preset.thumbnailDataUrl : '';
-//         const ts = preset._savedAt ? this._escapeHtml(new Date(preset._savedAt).toLocaleString()) : 'unknown';
-//         const pretty = this._escapeHtml(JSON.stringify(preset, null, 2));
-//         return `
-//           <article class="card">
-//             <div class="meta">
-//               <strong>Preset ${index + 1}</strong>
-//               <span>${ts}</span>
-//             </div>
-//             ${thumb ? `<img class="thumb" src="${thumb}" alt="Preset ${index + 1} thumbnail" />` : '<div class="thumb empty">No thumbnail</div>'}
-//             <details>
-//               <summary>JSON</summary>
-//               <pre>${pretty}</pre>
-//             </details>
-//           </article>
-//         `;
-//       })
-//       .join('');
+  //     const doc = this._presetGalleryWindow.document;
+  //     const items = this.savedPresets
+  //       .map((preset, index) => {
+  //         const thumb = typeof preset.thumbnailDataUrl === 'string' ? preset.thumbnailDataUrl : '';
+  //         const ts = preset._savedAt ? this.#_escapeHtml(new Date(preset._savedAt).toLocaleString()) : 'unknown';
+  //         const pretty = this.#_escapeHtml(JSON.stringify(preset, null, 2));
+  //         return `
+  //           <article class="card">
+  //             <div class="meta">
+  //               <strong>Preset ${index + 1}</strong>
+  //               <span>${ts}</span>
+  //             </div>
+  //             ${thumb ? `<img class="thumb" src="${thumb}" alt="Preset ${index + 1} thumbnail" />` : '<div class="thumb empty">No thumbnail</div>'}
+  //             <details>
+  //               <summary>JSON</summary>
+  //               <pre>${pretty}</pre>
+  //             </details>
+  //           </article>
+  //         `;
+  //       })
+  //       .join('');
 
-//     doc.open();
-//     doc.write(`<!doctype html>
-// <html>
-//   <head>
-//     <meta charset="utf-8" />
-//     <title>MAGE Saved Presets</title>
-//     <style>
-//       body { margin: 0; padding: 12px; background: #0f1117; color: #e8ebf2; font-family: Arial, sans-serif; }
-//       h1 { margin: 0 0 10px; font-size: 16px; }
-//       .list { display: grid; gap: 10px; }
-//       .card { border: 1px solid #2f3440; border-radius: 10px; background: #171b24; padding: 10px; }
-//       .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin-bottom: 8px; }
-//       .thumb { width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #394153; background: #0b0e14; }
-//       .thumb.empty { display: grid; place-items: center; color: #8f98ad; min-height: 120px; }
-//       details { margin-top: 8px; }
-//       pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; color: #c8cfde; background: #10141c; border-radius: 8px; padding: 8px; }
-//     </style>
-//   </head>
-//   <body>
-//     <h1>Saved toPreset Snapshots (${this.savedPresets.length})</h1>
-//     <div class="list">${items || '<div class="card">No presets saved yet.</div>'}</div>
-//   </body>
-// </html>`);
-//     doc.close();
-//   }
+  //     doc.open();
+  //     doc.write(`<!doctype html>
+  // <html>
+  //   <head>
+  //     <meta charset="utf-8" />
+  //     <title>MAGE Saved Presets</title>
+  //     <style>
+  //       body { margin: 0; padding: 12px; background: #0f1117; color: #e8ebf2; font-family: Arial, sans-serif; }
+  //       h1 { margin: 0 0 10px; font-size: 16px; }
+  //       .list { display: grid; gap: 10px; }
+  //       .card { border: 1px solid #2f3440; border-radius: 10px; background: #171b24; padding: 10px; }
+  //       .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin-bottom: 8px; }
+  //       .thumb { width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #394153; background: #0b0e14; }
+  //       .thumb.empty { display: grid; place-items: center; color: #8f98ad; min-height: 120px; }
+  //       details { margin-top: 8px; }
+  //       pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; color: #c8cfde; background: #10141c; border-radius: 8px; padding: 8px; }
+  //     </style>
+  //   </head>
+  //   <body>
+  //     <h1>Saved toPreset Snapshots (${this.savedPresets.length})</h1>
+  //     <div class="list">${items || '<div class="card">No presets saved yet.</div>'}</div>
+  //   </body>
+  // </html>`);
+  //     doc.close();
+  //   }
 
-  _setCameraUpFromTilt(tiltValue = this.state?.camTilt) {
-    if (!this.camera || typeof tiltValue !== 'number' || !Number.isFinite(tiltValue)) {
+  #_setCameraUpFromTilt(tiltValue = this.#state?.camTilt) {
+    if (!this.#camera || typeof tiltValue !== 'number' || !Number.isFinite(tiltValue)) {
       return;
     }
 
-    this.camera.up.set(
+    this.#camera.up.set(
       Math.sin(tiltValue),
       Math.cos(tiltValue),
       -Math.sin(tiltValue),
     );
   }
 
-  _applyCompactIntent(intent) {
+  #_applyCompactIntent(intent) {
     if (!intent || typeof intent !== 'object') {
       return;
     }
 
-    this._applyStatePatch(intent, { applied: [], warnings: [] });
+    this.#_applyStatePatch(intent, { applied: [], warnings: [] });
 
-    if (this.controls) {
+    if (this.#controls) {
       if (typeof intent.autoRotate === 'boolean') {
-        this.controls.autoRotate = intent.autoRotate;
+        this.#controls.autoRotate = intent.autoRotate;
       }
       if (typeof intent.autoRotateSpeed === 'number' && Number.isFinite(intent.autoRotateSpeed)) {
-        this.controls.autoRotateSpeed = intent.autoRotateSpeed;
+        this.#controls.autoRotateSpeed = intent.autoRotateSpeed;
       }
     }
 
-    if (this.camera && typeof intent.fov === 'number' && Number.isFinite(intent.fov)) {
-      this.camera.fov = intent.fov;
-      this.camera.updateProjectionMatrix();
+    if (this.#camera && typeof intent.fov === 'number' && Number.isFinite(intent.fov)) {
+      this.#camera.fov = intent.fov;
+      this.#camera.updateProjectionMatrix();
     }
 
-    if (typeof intent.camTilt === 'number' && Number.isFinite(intent.camTilt) && this.camera) {
-      this._setCameraUpFromTilt(intent.camTilt);
+    if (typeof intent.camTilt === 'number' && Number.isFinite(intent.camTilt) && this.#camera) {
+      this.#_setCameraUpFromTilt(intent.camTilt);
     }
   }
 
-  _applyCompactFx(fx) {
+  #_applyCompactFx(fx) {
     if (!fx || typeof fx !== 'object') {
       return;
     }
@@ -1395,12 +1238,12 @@ export class MAGEEngine {
     if (fx.toneMapping && typeof fx.toneMapping === 'object') {
       if (typeof fx.toneMapping.method === 'number' && Number.isFinite(fx.toneMapping.method)) {
         effects.toneMapping.method = fx.toneMapping.method;
-        if (this.renderer) {
-          this.renderer.toneMapping = fx.toneMapping.method;
+        if (this.#renderer) {
+          this.#renderer.toneMapping = fx.toneMapping.method;
         }
       }
-      if (typeof fx.toneMapping.exposure === 'number' && Number.isFinite(fx.toneMapping.exposure) && this.renderer) {
-        this.renderer.toneMappingExposure = fx.toneMapping.exposure;
+      if (typeof fx.toneMapping.exposure === 'number' && Number.isFinite(fx.toneMapping.exposure) && this.#renderer) {
+        this.#renderer.toneMappingExposure = fx.toneMapping.exposure;
       }
     }
 
@@ -1456,12 +1299,12 @@ export class MAGEEngine {
       }
     }
 
-    if (this.composer) {
-      this.composer = effects.applyPostProcessing(this.scene, this.renderer, this.camera, this.composer);
+    if (this.#composer) {
+      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
     }
   }
 
-  _coercePresetInput(presetInput, report) {
+  #_coercePresetInput(presetInput, report) {
     if (presetInput instanceof MAGEPreset) {
       return presetInput;
     }
@@ -1494,7 +1337,7 @@ export class MAGEEngine {
     return presetInput;
   }
 
-  _extractVisualizerPatch(root, report) {
+  #_extractVisualizerPatch(root, report) {
     const visualizerPatch =
       root.visualizer && typeof root.visualizer === 'object' && !Array.isArray(root.visualizer)
         ? { ...root.visualizer }
@@ -1526,7 +1369,7 @@ export class MAGEEngine {
     return visualizerPatch;
   }
 
-  _extractStatePatch(root, report) {
+  #_extractStatePatch(root, report) {
     const statePatch = {};
     if (root.state && typeof root.state === 'object' && !Array.isArray(root.state)) {
       Object.assign(statePatch, root.state);
@@ -1537,7 +1380,7 @@ export class MAGEEngine {
     return statePatch;
   }
 
-  _extractControlsPatch(root, report) {
+  #_extractControlsPatch(root, report) {
     if (!root.controls) {
       return null;
     }
@@ -1556,7 +1399,7 @@ export class MAGEEngine {
     };
   }
 
-  _normalizeSkyboxInput(skyboxInput) {
+  #_normalizeSkyboxInput(skyboxInput) {
     if (skyboxInput && typeof skyboxInput === 'object' && !Array.isArray(skyboxInput)) {
       const { type, presetId } = skyboxInput;
       if (type === 'preset' && Number.isInteger(presetId) && presetId >= 0) {
@@ -1592,7 +1435,7 @@ export class MAGEEngine {
     return null;
   }
 
-  _applyStatePatch(statePatch, report) {
+  #_applyStatePatch(statePatch, report) {
     if (!statePatch || typeof statePatch !== 'object') {
       report.missing.push('state');
       return;
@@ -1605,12 +1448,12 @@ export class MAGEEngine {
     }
 
     for (const key of stateKeys) {
-      if (!Object.hasOwn(this.state, key)) {
+      if (!Object.hasOwn(this.#state, key)) {
         report.warnings.push(`state.${key} is unknown and was ignored`);
         continue;
       }
 
-      const currentValue = this.state[key];
+      const currentValue = this.#state[key];
       const incomingValue = statePatch[key];
 
       if (currentValue instanceof Vector3) {
@@ -1619,22 +1462,22 @@ export class MAGEEngine {
       }
 
       if (typeof currentValue === 'number') {
-        this.state[key] = incomingValue;
+        this.#state[key] = incomingValue;
         report.applied.push(`state.${key}`);
         continue;
       }
 
-      this.state[key] = incomingValue;
+      this.#state[key] = incomingValue;
       report.applied.push(`state.${key}`);
     }
 
-    if (typeof this.state.time_multiplier !== 'number' || !Number.isFinite(this.state.time_multiplier)) {
-      this.state.time_multiplier = 1.0;
+    if (typeof this.#state.time_multiplier !== 'number' || !Number.isFinite(this.#state.time_multiplier)) {
+      this.#state.time_multiplier = 1.0;
       report.warnings.push('state.time_multiplier was invalid after patch; reset to 1.0');
     }
   }
 
-  _summarizePresetReport(report) {
+  #_summarizePresetReport(report) {
     const parts = [];
     parts.push(report.applied.length ? `Applied ${report.applied.length} field(s)` : 'Applied no fields');
     if (report.missing.length) {
@@ -1649,7 +1492,7 @@ export class MAGEEngine {
     return parts.join(' | ');
   }
 
-  _resolveSkyboxPath({ type, presetId }) {
+  #_resolveSkyboxPath({ type, presetId }) {
     if (type !== 'preset' || typeof presetId !== 'number') {
       // TODO - support custom skybox paths in addition to preset-based ones
       return { resolvedPath: null, skyboxId: -1 };
@@ -1658,19 +1501,19 @@ export class MAGEEngine {
     }
   }
 
-  _getViewportSize() {
-    if (this.canvas) {
-      const rect = this.canvas.getBoundingClientRect();
+  #_getViewportSize() {
+    if (this.#canvas) {
+      const rect = this.#canvas.getBoundingClientRect();
       const width = Math.max(
         1,
         Math.floor(
-          rect.width || this.canvas.clientWidth || this.canvas.width || 0,
+          rect.width || this.#canvas.clientWidth || this.#canvas.width || 0,
         ),
       );
       const height = Math.max(
         1,
         Math.floor(
-          rect.height || this.canvas.clientHeight || this.canvas.height || 0,
+          rect.height || this.#canvas.clientHeight || this.#canvas.height || 0,
         ),
       );
       if (width > 0 && height > 0) {
@@ -1684,51 +1527,51 @@ export class MAGEEngine {
     };
   }
 
-  _syncViewport(force = false) {
-    if (!this.renderer || !this.camera) {
+  #_syncViewport(force = false) {
+    if (!this.#renderer || !this.#camera) {
       return;
     }
 
-    const { width, height } = this._getViewportSize();
-    if (!force && width === this.viewportWidth && height === this.viewportHeight) {
+    const { width, height } = this.#_getViewportSize();
+    if (!force && width === this.#viewportWidth && height === this.#viewportHeight) {
       return;
     }
 
-    this.viewportWidth = width;
-    this.viewportHeight = height;
+    this.#viewportWidth = width;
+    this.#viewportHeight = height;
 
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
+    this.#camera.aspect = width / height;
+    this.#camera.updateProjectionMatrix();
 
-    this.renderer.setSize(width, height, false);
+    this.#renderer.setSize(width, height, false);
 
-    if (this.composer && this.composer.setSize) {
-      this.composer.setSize(width, height);
+    if (this.#composer && this.#composer.setSize) {
+      this.#composer.setSize(width, height);
     }
 
-    if (this.renderTarget && this.renderTarget.setSize) {
-      this.renderTarget.setSize(
+    if (this.#renderTarget && this.#renderTarget.setSize) {
+      this.#renderTarget.setSize(
         Math.max(1, Math.floor(width / 4)),
         Math.max(1, Math.floor(height / 4)),
       );
     }
 
-    this._syncSobelResolution();
+    this.#_syncSobelResolution();
   }
 
-  _ensureViewportToast() {
-    if (this.viewportToast.el && document.body.contains(this.viewportToast.el)) {
+  #_ensureViewportToast() {
+    if (this.#viewportToast.el && document.body.contains(this.#viewportToast.el)) {
       return;
     }
 
     // Skip toast creation for detached/offscreen canvases used for thumbnail capture.
-    if (this.canvas && !this.canvas.isConnected) {
+    if (this.#canvas && !this.#canvas.isConnected) {
       return;
     }
 
     const host =
-      this.canvas?.parentElement ||
-      this.renderer?.domElement?.parentElement ||
+      this.#canvas?.parentElement ||
+      this.#renderer?.domElement?.parentElement ||
       document.body;
 
     if (host && getComputedStyle(host).position === 'static') {
@@ -1761,107 +1604,111 @@ export class MAGEEngine {
     });
 
     host.appendChild(toast);
-    this.viewportToast.el = toast;
+    this.#viewportToast.el = toast;
   }
 
-  _disposeForThumbnailCapture() {
-    this._pendingSkyboxLoad = null;
+  #_disposeForThumbnailCapture() {
+    this.#_pendingSkyboxLoad = null;
+    const rendererCanvas = this.#renderer?.domElement || null;
 
     try {
-      this.controls?.dispose?.();
+      this.#controls?.dispose?.();
     } catch {
       // no-op
     }
 
     try {
-      this.renderTarget?.dispose?.();
+      this.#renderTarget?.dispose?.();
     } catch {
       // no-op
     }
 
     try {
-      this.renderer?.dispose?.();
-      this.renderer?.forceContextLoss?.();
+      this.#renderer?.dispose?.();
+      this.#renderer?.forceContextLoss?.();
     } catch {
       // no-op
     }
 
-    if (this.viewportToast?.el?.parentElement) {
-      this.viewportToast.el.parentElement.removeChild(this.viewportToast.el);
+    if (rendererCanvas?.parentElement) {
+      rendererCanvas.parentElement.removeChild(rendererCanvas);
     }
-    this.viewportToast.el = null;
+
+    if (this.#viewportToast?.el?.parentElement) {
+      this.#viewportToast.el.parentElement.removeChild(this.#viewportToast.el);
+    }
+    this.#viewportToast.el = null;
   }
 
-  _createScene() {
-    const { width, height } = this._getViewportSize();
+  #_createScene() {
+    const { width, height } = this.#_getViewportSize();
 
     // initialize scene
-    this.scene = new Scene();
+    this.#scene = new Scene();
 
     // initialize camera
-    this.camera = new PerspectiveCamera(75, width / height, 0.1, 100000);
-    this.camera.position.z = 5.5;
-    this.camera.lookAt(0, 10, 100);
+    this.#camera = new PerspectiveCamera(75, width / height, 0.1, 100000);
+    this.#camera.position.z = 5.5;
+    this.#camera.lookAt(0, 10, 100);
 
     // init audio listener
-    this.listener = new AudioListener();
-    this.camera.add(this.listener);
+    this.#listener = new AudioListener();
+    this.#camera.add(this.#listener);
 
     // initialize renderer
     const rendererOptions = {};
-    if (this.canvas) {
-      rendererOptions.canvas = this.canvas;
+    if (this.#canvas) {
+      rendererOptions.canvas = this.#canvas;
     }
-    this.renderer = new WebGLRenderer(rendererOptions);
-    this.renderer.setSize(width, height, false);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setClearColor(new Color(1, 1, 1), 0);
+    this.#renderer = new WebGLRenderer(rendererOptions);
+    this.#renderer.setSize(width, height, false);
+    this.#renderer.setPixelRatio(window.devicePixelRatio);
+    this.#renderer.setClearColor(new Color(1, 1, 1), 0);
     // Match original renderer tone mapping exposure behavior
-    this.renderer.toneMappingExposure = effects.toneMapping.exposure;
-    this.renderer.outputColorSpace = SRGBColorSpace;
+    this.#renderer.toneMappingExposure = effects.toneMapping.exposure;
+    this.#renderer.outputColorSpace = SRGBColorSpace;
 
-    if (!this.canvas) {
+    if (!this.#canvas) {
       // Match existing behavior: append the canvas to the body when not provided
-      document.body.appendChild(this.renderer.domElement);
+      document.body.appendChild(this.#renderer.domElement);
     }
 
     // initialize clock
-    this.clock = new Timer();
+    this.#clock = new Timer();
 
     // Add mouse controls
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement, {
+    this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement, {
       enabledamping: true,
       dampingFactor: 0.25,
       zoomSpeed: 0.5,
       rotateSpeed: 0.5,
     });
-    this.controls.enabledamping = true;
-    this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.2;
-    this.controls.saveState();
+    this.#controls.enabledamping = true;
+    this.#controls.autoRotate = true;
+    this.#controls.autoRotateSpeed = 0.2;
+    this.#controls.saveState();
 
-    this._ensureViewportToast();
+    this.#_ensureViewportToast();
 
-    this._syncViewport(true);
+    this.#_syncViewport(true);
   }
 
-  _loadControls(presetControls) {
-    if (presetControls && this.controls) {
+  #_loadControls(presetControls) {
+    if (presetControls && this.#controls) {
       const { target0, position0, zoom0 } = presetControls;
-      this.controls.target0.copy(target0);
-      this.controls.position0.copy(position0);
-      this.controls.zoom0 = zoom0;
-      this.controls.reset();
+      this.#controls.target0.copy(target0);
+      this.#controls.position0.copy(position0);
+      this.#controls.zoom0 = zoom0;
+      this.#controls.reset();
     }
   }
 
-  _loadDefaultVisualizer() {
-    // SHADER
-    this.visualizer.load({ shader: generateshaderparkcode('default'), addToHistory: true });
-    this._loadSkybox({ type: 'preset', presetId: 6 });
+  #_loadDefaultVisualizer() {
+    this.#visualizer.load({ shader: generateshaderparkcode('default'), addToHistory: true });
+    this.#_loadSkybox({ type: 'preset', presetId: 6 });
   }
 
-  _loadDefaultPreset() {
+  #_loadDefaultPreset() {
     // const defaultPreset = getEmbeddedPresetById(1);
     // if (defaultPreset) {
     //   const loadedPreset = this.loadPreset(defaultPreset);
@@ -1870,11 +1717,11 @@ export class MAGEEngine {
     //   }
     // }
 
-    this._loadDefaultVisualizer();
+    this.#_loadDefaultVisualizer();
     return null;
   }
 
-  _idFromShaderCode(shaderCode) {
+  #_idFromShaderCode(shaderCode) {
     // Simple hash function to generate a unique ID from shader code
     let hash = 0;
     for (let i = 0; i < shaderCode.length; i++) {
@@ -1885,44 +1732,44 @@ export class MAGEEngine {
     return `shader_${Math.abs(hash)}`;
   }
 
-  _loadSkybox({type, presetId}) {
-    const { resolvedPath, skyboxId } = this._resolveSkyboxPath({ type: type, presetId: presetId });
+  #_loadSkybox({ type, presetId }) {
+    const { resolvedPath, skyboxId } = this.#_resolveSkyboxPath({ type: type, presetId: presetId });
     if (!resolvedPath) {
       if (this.log) console.log('No valid skybox input provided:', presetId);
       return;
     }
 
-    this.visualizer.skyboxPreset = skyboxId;
+    this.#visualizer.skyboxPreset = skyboxId;
 
     const loader = new CubeTextureLoader();
     const embeddedFaces = getEmbeddedSkyboxFaces(skyboxId);
 
     const faceUrls = embeddedFaces
       ? [
-          embeddedFaces.left,
-          embeddedFaces.right,
-          embeddedFaces.up,
-          embeddedFaces.down,
-          embeddedFaces.front,
-          embeddedFaces.back,
-        ]
+        embeddedFaces.left,
+        embeddedFaces.right,
+        embeddedFaces.up,
+        embeddedFaces.down,
+        embeddedFaces.front,
+        embeddedFaces.back,
+      ]
       : [
-          `${resolvedPath}sky_left.jpg`,
-          `${resolvedPath}sky_right.jpg`,
-          `${resolvedPath}sky_up.jpg`,
-          `${resolvedPath}sky_down.jpg`,
-          `${resolvedPath}sky_front.jpg`,
-          `${resolvedPath}sky_back.jpg`,
-        ];
+        `${resolvedPath}sky_left.jpg`,
+        `${resolvedPath}sky_right.jpg`,
+        `${resolvedPath}sky_up.jpg`,
+        `${resolvedPath}sky_down.jpg`,
+        `${resolvedPath}sky_front.jpg`,
+        `${resolvedPath}sky_back.jpg`,
+      ];
 
-    this._pendingSkyboxLoad = new Promise(resolve => {
+    this.#_pendingSkyboxLoad = new Promise(resolve => {
       let settled = false;
       const finish = result => {
         if (settled) {
           return;
         }
         settled = true;
-        this._pendingSkyboxLoad = null;
+        this.#_pendingSkyboxLoad = null;
         resolve(result);
       };
 
@@ -1933,75 +1780,73 @@ export class MAGEEngine {
         () => finish(false),
       );
 
-      this.scene.background = texture;
+      this.#scene.background = texture;
     });
   }
 
-  _createMeshes() {
+  /** @internal */
+  removeMesh(mesh) {
+    if (this.#scene && mesh) {
+      this.#scene.remove(mesh);
+    }
+  }
+  /** @internal */
+  createMesh(visualizer) {
     // add shader to geometry
     const geometry = new BoxGeometry(20000, 20000, 20000);
-    this.visualizer.mesh = createSculptureWithGeometry(geometry, this.visualizer.shader, () => {
+    visualizer.mesh = createSculptureWithGeometry(geometry, visualizer.shader, () => {
       return {
-        time: this.state.time,
-        size: this.state.size,
-        pointerDown: this.state.pointerDown,
-        mouse: this.state.mouse,
-        _scale: this.visualizer.scale,
+        time: this.#state.time,
+        size: this.#state.size,
+        pointerDown: this.#state.pointerDown,
+        mouse: this.#state.mouse,
+        _scale: visualizer.scale,
       };
     });
-    this.scene.add(this.visualizer.mesh);
+    this.#scene.add(visualizer.mesh);
 
     // Scene and camera for rendering Shader Park
     // Render target for Shader Park output for object picking
-    this.renderTarget = new WebGLRenderTarget(
-      Math.max(1, Math.floor(this.viewportWidth / 4)),
-      Math.max(1, Math.floor(this.viewportHeight / 4)),
+    this.#renderTarget = new WebGLRenderTarget(
+      Math.max(1, Math.floor(this.#viewportWidth / 4)),
+      Math.max(1, Math.floor(this.#viewportHeight / 4)),
       {
-      // use quarter res to save frames
-      format: RGBAFormat,
-      type: UnsignedByteType,
+        // use quarter res to save frames
+        format: RGBAFormat,
+        type: UnsignedByteType,
       },
     );
-    this.rtScene = new Scene();
-    this.rtCamera = this.camera;
-    const targetMesh = createSculptureWithGeometry(geometry, this.visualizer.shader, () => {
-      return {
-        time: this.state.time,
-        size: this.state.size,
-        pointerDown: this.state.pointerDown,
-        mouse: this.state.mouse,
-        _scale: this.visualizer.scale,
-      };
-    });
-    this.rtScene.add(targetMesh);
+    this.#rtScene = new Scene();
+    this.#rtCamera = this.#camera;
+    this.#rtScene.add(visualizer.mesh.clone());
 
     if (this.log) console.log('Visualizer Loaded!');
   }
 
-  _render() {
-    requestAnimationFrame(this._render);
-    this._syncViewport();
+  #_render = () => {
+    requestAnimationFrame(this.#_render);
+    this.#_syncViewport();
 
-    const delta = this.clock.getDelta();
-    this.state.time = delta;
-    if (!Number.isFinite(this.state.time_multiplier)) {
-      this.state.time_multiplier = 1.0;
+    const delta = this.#clock.getDelta();
+    this.#state.time = delta;
+    if (!Number.isFinite(this.#state.time_multiplier)) {
+      this.#state.time_multiplier = 1.0;
     }
 
     // alternates flow of time to prevent animation bugs
-    if (this.state.time < 180 && this.timeIncreasing) {
-      this.state.time += this.state.time_multiplier * delta;
+    if (this.#state.time < 180 && this.#timeIncreasing) {
+      this.#state.time += this.#state.time_multiplier * delta;
     } else {
-      this.timeIncreasing = false;
-      this.state.time -= this.state.time_multiplier * delta;
-      if (this.state.time <= 0) {
-        this.timeIncreasing = true;
+      this.#timeIncreasing = false;
+      this.#state.time -= this.#state.time_multiplier * delta;
+      if (this.#state.time <= 0) {
+        this.#timeIncreasing = true;
       }
     }
 
     // // animate tab bar (document.title)
-    // const timeCalc = (1 + Math.sin(this.state.time)) * 10 / 2;
-    // if (this.audio && this.audio.isPlaying) {
+    // const timeCalc = (1 + Math.sin(this.#state.time)) * 10 / 2;
+    // if (this.#audio && this.#audio.isPlaying) {
     //   if (timeCalc > 5.0) {
     //     document.title = 'MAGE - Playing Audio...';
     //   } else {
@@ -2012,131 +1857,131 @@ export class MAGEEngine {
     // }
 
     // use easing and linear interpolation to smoothly animate mouse effects
-    this.state.pointerDown = 0.1 * this.state.currPointerDown + 0.9 * this.state.pointerDown;
-    this.state.mouse.lerp(this.state.currMouse, 0.05);
+    this.#state.pointerDown = 0.1 * this.#state.currPointerDown + 0.9 * this.#state.pointerDown;
+    this.#state.mouse.lerp(this.#state.currMouse, 0.05);
 
     let bass_input = 0;
     let mid_input = 0;
 
     // analyze audio using FFT
     if (
-      this.audioAnalyser &&
-      ((this.audio && this.audio.isPlaying) || (this.reversedAudio && this.reversedAudio.isPlaying))
+      this.#audioAnalyser &&
+      ((this.#audio && this.#audio.isPlaying) || (this.#reversedAudio && this.#reversedAudio.isPlaying))
     ) {
-      const freqData = this.audioAnalyser.getFrequencyData();
+      const freqData = this.#audioAnalyser.getFrequencyData();
 
       // FFT Bucket 2
-      const bass_analysis = Math.pow((freqData[2] / 255) * this.state.minimizing_factor, this.state.power_factor);
-      bass_input = bass_analysis + delta * this.state.base_speed;
+      const bass_analysis = Math.pow((freqData[2] / 255) * this.#state.minimizing_factor, this.#state.power_factor);
+      bass_input = bass_analysis + delta * this.#state.base_speed;
 
       // TODO: FFT MID AND HIGH - keep existing behavior
-      const mid_analysis = Math.pow((freqData[4] / 255) * this.state.minimizing_factor, this.state.power_factor);
-      mid_input = mid_analysis + delta * this.state.base_speed;
+      const mid_analysis = Math.pow((freqData[4] / 255) * this.#state.minimizing_factor, this.#state.power_factor);
+      mid_input = mid_analysis + delta * this.#state.base_speed;
     }
 
     // add audio input to states
-    const val = Math.sin(this.state.time) * this.state.size * 0.02 + 0.1;
-    this.state.currAudio = bass_input + val * this.state.base_speed + delta * this.state.base_speed;
-    this.state.size =
-      (1 - this.state.easing_speed) * this.state.currAudio +
-      this.state.easing_speed * this.state.size +
-      this.state.volume_multiplier * 0.01;
+    const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1;
+    this.#state.currAudio = bass_input + val * this.#state.base_speed + delta * this.#state.base_speed;
+    this.#state.size =
+      (1 - this.#state.easing_speed) * this.#state.currAudio +
+      this.#state.easing_speed * this.#state.size +
+      this.#state.volume_multiplier * 0.01;
 
     // Keep controls authoritative for camera motion, then apply tilt orientation once.
-    this.controls.update();
+    this.#controls.update();
 
     // ONLY CHECK PIXEL IF IT INTERSECTS
-    const os = this._getOS();
+    const os = this.#_getOS();
     const isDesktopOS = os === 'Windows' || os === 'Mac OS' || os === 'Linux';
-    if (this.controls.enabled && isDesktopOS) {
+    if (this.#controls.enabled && isDesktopOS) {
       const raycaster = new Raycaster();
-      raycaster.setFromCamera(this.inputs.currMouse, this.camera);
-      const intersects = this.visualizer.mesh ? raycaster.intersectObject(this.visualizer.mesh) : [];
+      raycaster.setFromCamera(this.#inputs.currMouse, this.#camera);
+      const intersects = this.#visualizer.mesh ? raycaster.intersectObject(this.#visualizer.mesh) : [];
       if (intersects.length > 0) {
-        this.visualizer.intersected = true;
+        this.#visualizer.intersected = true;
 
         // Render Shader Park material to the render target
-        if (this.renderTarget && this.rtScene && this.rtCamera) {
-          this.renderer.setRenderTarget(this.renderTarget);
-          this.renderer.render(this.rtScene, this.rtCamera);
-          this.renderer.setRenderTarget(null); // Reset to default framebuffer
+        if (this.#renderTarget && this.#rtScene && this.#rtCamera) {
+          this.#renderer.setRenderTarget(this.#renderTarget);
+          this.#renderer.render(this.#rtScene, this.#rtCamera);
+          this.#renderer.setRenderTarget(null); // Reset to default framebuffer
 
           // Read pixel color from render target
           const pixelBuffer = new Uint8Array(4);
-          const hitNdc = intersects[0].point.clone().project(this.camera);
-          const w = this.renderTarget.width;
-          const h = this.renderTarget.height;
+          const hitNdc = intersects[0].point.clone().project(this.#camera);
+          const w = this.#renderTarget.width;
+          const h = this.#renderTarget.height;
           const x = Math.max(0, Math.min(w - 1, Math.floor((hitNdc.x + 1) * 0.5 * (w - 1))));
           const y = Math.max(0, Math.min(h - 1, Math.floor((hitNdc.y + 1) * 0.5 * (h - 1))));
 
-          this.renderer.readRenderTargetPixels(this.renderTarget, x, y, 1, 1, pixelBuffer);
+          this.#renderer.readRenderTargetPixels(this.#renderTarget, x, y, 1, 1, pixelBuffer);
 
           // Check if pixel belongs to shader (e.g., non-zero alpha)
-          const nearCenter = this._isPointerNearVisualizerCenter(this.visualizer.centerClickRadiusNdc);
+          const nearCenter = this.#_isPointerNearVisualizerCenter(this.#visualizer.centerClickRadiusNdc);
           if (pixelBuffer[3] > 0 && nearCenter) {
-            this._growVisualizer();
-            this.visualizer.clickable = true;
+            this.#_growVisualizer();
+            this.#visualizer.clickable = true;
           } else {
-            this.visualizer.clickable = false;
+            this.#visualizer.clickable = false;
           }
         }
       } else {
-        this.visualizer.intersected = false;
-        this.visualizer.clickable = false;
+        this.#visualizer.intersected = false;
+        this.#visualizer.clickable = false;
       }
     }
 
-    if (this.viewportToast.el && this.viewportToast.visible) {
-      const elapsedMs = performance.now() - this.viewportToast.shownAt;
-      if (elapsedMs <= this.viewportToast.durationMs) {
-        this.viewportToast.el.style.opacity = '1';
-      } else if (elapsedMs <= this.viewportToast.durationMs + this.viewportToast.fadeMs) {
+    if (this.#viewportToast.el && this.#viewportToast.visible) {
+      const elapsedMs = performance.now() - this.#viewportToast.shownAt;
+      if (elapsedMs <= this.#viewportToast.durationMs) {
+        this.#viewportToast.el.style.opacity = '1';
+      } else if (elapsedMs <= this.#viewportToast.durationMs + this.#viewportToast.fadeMs) {
         const fadeProgress =
-          (elapsedMs - this.viewportToast.durationMs) / this.viewportToast.fadeMs;
-        this.viewportToast.el.style.opacity = `${Math.max(0, 1 - fadeProgress)}`;
+          (elapsedMs - this.#viewportToast.durationMs) / this.#viewportToast.fadeMs;
+        this.#viewportToast.el.style.opacity = `${Math.max(0, 1 - fadeProgress)}`;
       } else {
-        this.viewportToast.visible = false;
-        this.viewportToast.el.style.opacity = '0';
-        this.viewportToast.el.style.display = 'none';
+        this.#viewportToast.visible = false;
+        this.#viewportToast.el.style.opacity = '0';
+        this.#viewportToast.el.style.display = 'none';
       }
     }
 
-    if (this.onAfterFrame) {
-      this.onAfterFrame(this);
+    if (this.#onAfterFrame) {
+      this.#onAfterFrame(this);
     }
 
-    if (this.cameraUpdateHook) {
-      this.cameraUpdateHook(this);
+    if (this.#cameraUpdateHook) {
+      this.#cameraUpdateHook(this);
     }
 
-    if (this.composer) {
-      this.composer.render(this.scene, this.camera);
+    if (this.#composer) {
+      this.#composer.render(this.#scene, this.#camera);
     } else {
-      this.renderer.render(this.scene, this.camera);
+      this.#renderer.render(this.#scene, this.#camera);
     }
   }
 
-  _growVisualizer() {
-    this.state.size += 0.03 * (1 - this.state.easing_speed + 0.01);
+  #_growVisualizer() {
+    this.#state.size += 0.03 * (1 - this.#state.easing_speed + 0.01);
   }
 
-  _isPointerNearVisualizerCenter(maxDistanceNdc = 0.35) {
-    if (!this.visualizer?.mesh || !this.camera || !this.inputs?.currMouse) {
+  #_isPointerNearVisualizerCenter(maxDistanceNdc = 0.35) {
+    if (!this.#visualizer?.mesh || !this.#camera || !this.#inputs?.currMouse) {
       return false;
     }
 
-    const meshCenterNdc = this.visualizer.mesh.position.clone().project(this.camera);
+    const meshCenterNdc = this.#visualizer.mesh.position.clone().project(this.#camera);
     if (!Number.isFinite(meshCenterNdc.x) || !Number.isFinite(meshCenterNdc.y)) {
       return false;
     }
 
-    const dx = this.inputs.currMouse.x - meshCenterNdc.x;
-    const dy = this.inputs.currMouse.y - meshCenterNdc.y;
+    const dx = this.#inputs.currMouse.x - meshCenterNdc.x;
+    const dy = this.#inputs.currMouse.y - meshCenterNdc.y;
     const distance = Math.hypot(dx, dy);
     return distance <= Math.max(0.01, Number(maxDistanceNdc) || 0.35);
   }
 
-  _getOS() {
+  #_getOS() {
     const userAgent = window.navigator.userAgent;
     const platform = window.navigator?.userAgentData?.platform || window.navigator.platform;
     const macosPlatforms = ['macOS', 'Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'];
@@ -2159,7 +2004,7 @@ export class MAGEEngine {
     return os;
   }
 
-  _createScreenShake() {
+  #_createScreenShake() {
     const self = this;
     return {
       enabled: false,
@@ -2204,7 +2049,7 @@ export class MAGEEngine {
         }
 
         camera.position.lerpVectors(this._startPoint, this._endPoint, position);
-        self.controls.update();
+        self.#controls.update();
       },
 
       getQuadra(t) {
@@ -2212,4 +2057,2031 @@ export class MAGEEngine {
       },
     };
   }
+  
+  initControls(options = {}) {
+    if (this.#controlPanel) {
+      return;
+    }
+    const engine = this;
+    const scene = engine.#scene;
+    const renderer = engine.#renderer;
+    const camera = engine.#camera;
+    const controls = engine.#controls;
+
+    const host = engine.#canvas?.parentElement || renderer.domElement.parentElement || document.body;
+    // Ensure host can anchor absolutely-positioned children
+    if (getComputedStyle(host).position === 'static') {
+      host.style.position = 'relative';
+    }
+
+    const state = engine.#state;
+    const visualizer = engine.#visualizer;
+    const inputs = engine.#inputs;
+
+    const EMBEDDED_PRESET_IDS = getEmbeddedPresetIds();
+
+    let composer = engine.#composer;
+    let audio = engine.#audio;
+    let reversedAudio = engine.#reversedAudio;
+    let pane = null;
+    let fxStudioOverlay = null;
+    let sceneCameraDock = null;
+
+    const rebuildComposer = () => {
+      composer = effects.applyPostProcessing(scene, renderer, camera, composer);
+      engine.#composer = composer;
+    };
+
+    const tooltipUI = {
+      visible: false,
+      x: 0,
+      y: 0,
+      element: document.createElement('div'),
+    };
+    tooltipUI.element.style.position = 'fixed';
+    tooltipUI.element.style.transform = 'translate(-50%, -50%)';
+    tooltipUI.element.style.zIndex = '5';
+    tooltipUI.element.style.pointerEvents = 'none';
+    tooltipUI.element.style.display = 'none';
+    tooltipUI.element.innerHTML = `<img src="${controlTipsImageDataUrl}" alt="controls" />`;
+    document.body.appendChild(tooltipUI.element);
+
+    const previousAfterFrame = engine.#onAfterFrame;
+    engine.#onAfterFrame = engineInstance => {
+      if (typeof previousAfterFrame === 'function') {
+        previousAfterFrame(engineInstance);
+      }
+
+      if (tooltipUI.visible) {
+        // hide regular mouse pointer
+        engineInstance.#renderer.domElement.style.cursor = 'none';
+        tooltipUI.element.style.display = 'block';
+        tooltipUI.element.style.left = `${tooltipUI.x}px`;
+        tooltipUI.element.style.top = `${tooltipUI.y}px`;
+      } else {
+        tooltipUI.element.style.display = 'none';
+        engineInstance.#renderer.domElement.style.cursor = '';
+      }
+    };
+
+    const randomizeSettings = () => {
+      const randRange = (min, max) => Math.random() * (max - min) + min;
+      const randInt = (min, max) => Math.floor(randRange(min, max + 1));
+      const randBool = (chance = 0.5) => Math.random() < chance;
+
+      // Scene + camera controls
+      state.minimizing_factor = randRange(0.01, 2.0);
+      state.power_factor = randRange(1.0, 10.0);
+      state.pointerDownMultiplier = randRange(0.0, 1.0);
+      state.base_speed = randRange(0.01, 0.9);
+      state.easing_speed = randRange(0.01, 0.9);
+      visualizer.scale = randRange(1.0, 200.0);
+
+      controls.autoRotate = randBool(0.5);
+      controls.autoRotateSpeed = randRange(0.1, 50.0);
+
+      camera.fov = randRange(1.0, 359.0);
+      camera.updateProjectionMatrix();
+
+      state.camTilt = randRange(0.0, 2 * Math.PI);
+      camera.up.set(
+        Math.sin(state.camTilt),
+        Math.cos(state.camTilt),
+        -Math.sin(state.camTilt),
+      );
+
+      const embeddedSkyboxIds = Object.keys(EMBEDDED_SKYBOXES)
+        .map(value => Number.parseInt(value, 10))
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+      if (embeddedSkyboxIds.length > 0) {
+        const skyboxId = embeddedSkyboxIds[randInt(0, embeddedSkyboxIds.length - 1)];
+        visualizer.skyboxPreset = skyboxId;
+        engine.#_loadSkybox({ type: 'preset', presetId: skyboxId });
+      }
+
+      // FX toggles + all adjustable FX parameters
+      effects.bloom.enabled = randBool(0.55);
+      effects.bloom.settings.strength = randRange(0.0, 10.0);
+      effects.bloom.settings.radius = randRange(-10.0, 10.0);
+      effects.bloom.settings.threshold = randRange(0.0, 10.0);
+
+      effects.RGBShift.enabled = randBool(0.4);
+      effects.RGBShift.shader.uniforms.amount.value = randRange(0.0, 0.1);
+      effects.RGBShift.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
+
+      effects.afterImagePass.enabled = randBool(0.35);
+      effects.afterImagePass.shader.uniforms.damp.value = randRange(0.0, 1.0);
+
+      effects.colorifyShader.enabled = randBool(0.35);
+      effects.colorifyShader.color.setHSL(Math.random(), randRange(0.2, 1.0), randRange(0.2, 0.8));
+
+      effects.kaleidoShader.enabled = randBool(0.3);
+      effects.kaleidoShader.shader.uniforms.sides.value = randInt(1, 24);
+      effects.kaleidoShader.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
+
+      effects.glitchPass.enabled = randBool(0.25);
+      effects.dotShader.enabled = randBool(0.25);
+      effects.technicolorShader.enabled = randBool(0.25);
+      effects.luminosityShader.enabled = randBool(0.25);
+      effects.sobelShader.enabled = randBool(0.25);
+      effects.halftonePass.enabled = randBool(0.25);
+      effects.gammaCorrectionShader.enabled = randBool(0.25);
+      effects.copyShader.enabled = randBool(0.2);
+      effects.bleachBypassShader.enabled = randBool(0.2);
+      effects.toonShader.enabled = randBool(0.2);
+
+      const toneMappingMethods = [
+        LinearToneMapping,
+        CineonToneMapping,
+        ACESFilmicToneMapping,
+        NoToneMapping,
+        ReinhardToneMapping,
+        AgXToneMapping,
+        NeutralToneMapping,
+      ];
+      effects.toneMapping.method = toneMappingMethods[randInt(0, toneMappingMethods.length - 1)];
+      renderer.toneMapping = effects.toneMapping.method;
+      renderer.toneMappingExposure = randRange(-500.0, 500.0);
+
+      const currentOrder = effects.getPassOrder();
+      const shuffled = currentOrder.filter(passId => passId !== 'outputPass');
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      effects.setPassOrder([...shuffled, 'outputPass']);
+
+      controls.update();
+      if (pane) {
+        pane.refresh();
+      }
+      fxStudioOverlay?.refresh();
+      sceneCameraDock?.refresh();
+      rebuildComposer();
+    };
+
+    const loadPresetById = async presetId => {
+      const embeddedPreset = getEmbeddedPresetById(presetId);
+      if (embeddedPreset) {
+        const appliedEmbedded = engine.loadPreset(embeddedPreset);
+        return Boolean(appliedEmbedded);
+      }
+
+      return false;
+    };
+
+    const createFxStudioOverlay = () => {
+      const toneMappingOptions = [
+        { label: 'Linear', value: LinearToneMapping },
+        { label: 'Cineon', value: CineonToneMapping },
+        { label: 'Filmic', value: ACESFilmicToneMapping },
+        { label: 'NoTone', value: NoToneMapping },
+        { label: 'Reinhard', value: ReinhardToneMapping },
+        { label: 'AGX', value: AgXToneMapping },
+        { label: 'Neutral', value: NeutralToneMapping },
+      ];
+
+      const layerLabels = {
+        bloom: 'Bloom',
+        RGBShift: 'RGB Shift',
+        dotShader: 'Dot FX',
+        technicolorShader: 'Technicolor',
+        luminosityShader: 'Luminosity',
+        afterImagePass: 'After Image',
+        sobelShader: 'Sobel',
+        colorifyShader: 'Colorify',
+        halftonePass: 'Halftone',
+        gammaCorrectionShader: 'Gamma Correction',
+        kaleidoShader: 'Kaleid',
+        glitchPass: 'Glitch',
+        copyShader: 'Copy Shader',
+        bleachBypassShader: 'Bleach Bypass',
+        toonShader: 'Toon',
+        outputPass: 'Output Pass',
+      };
+
+      const syncSobelResolution = () => {
+        if (!effects.sobelShader?.shader?.uniforms?.resolution?.value) {
+          return;
+        }
+        const bufferWidth = renderer.domElement.width || window.innerWidth * window.devicePixelRatio;
+        const bufferHeight = renderer.domElement.height || window.innerHeight * window.devicePixelRatio;
+        effects.sobelShader.shader.uniforms.resolution.value.x = bufferWidth;
+        effects.sobelShader.shader.uniforms.resolution.value.y = bufferHeight;
+      };
+
+      const overlay = document.createElement('div');
+      overlay.className = 'mage-fx-studio-dock';
+      Object.assign(overlay.style, {
+        position: 'fixed',
+        zIndex: '40',
+        display: 'none',
+        pointerEvents: 'none',
+      });
+
+      const panel = document.createElement('div');
+      Object.assign(panel.style, {
+        width: '360px',
+        maxHeight: '84vh',
+        overflow: 'auto',
+        padding: '12px',
+        borderRadius: '12px',
+        border: '1px solid rgba(255,255,255,0.2)',
+        background: 'rgba(13, 17, 26, 0.95)',
+        color: '#fff',
+        display: 'grid',
+        gap: '10px',
+        pointerEvents: 'auto',
+        boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
+      });
+
+      const title = document.createElement('div');
+      title.textContent = 'FX Studio';
+      Object.assign(title.style, {
+        fontSize: '16px',
+        fontWeight: '700',
+      });
+
+      const hint = document.createElement('div');
+      hint.textContent = 'Drag rows to reorder. Each row combines enable and settings.';
+      Object.assign(hint.style, {
+        fontSize: '12px',
+        opacity: '0.8',
+      });
+
+      const stackSection = document.createElement('div');
+      Object.assign(stackSection.style, {
+        border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: '10px',
+        padding: '8px',
+        display: 'grid',
+        gap: '8px',
+      });
+
+      const stackTitle = document.createElement('div');
+      stackTitle.textContent = 'Effect Stack';
+      Object.assign(stackTitle.style, {
+        fontSize: '13px',
+        fontWeight: '600',
+      });
+
+      const stackList = document.createElement('div');
+      Object.assign(stackList.style, {
+        display: 'grid',
+        gap: '6px',
+      });
+
+      let draggedLayerId = null;
+
+      const clearDropIndicators = () => {
+        stackList
+          .querySelectorAll('[data-layer-id]')
+          .forEach(rowEl => {
+            rowEl.style.outline = 'none';
+            rowEl.style.background = 'rgba(255,255,255,0.03)';
+          });
+      };
+
+      const addRangeControl = (parent, { label, min, max, step = 0.001, getValue, setValue }) => {
+        const row = document.createElement('label');
+        Object.assign(row.style, {
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: '8px',
+          alignItems: 'center',
+          fontSize: '12px',
+          marginBottom: '5px',
+        });
+
+        const labelEl = document.createElement('span');
+        labelEl.textContent = label;
+
+        const wrap = document.createElement('div');
+        Object.assign(wrap.style, {
+          display: 'grid',
+          gridTemplateColumns: '1fr auto auto',
+          minWidth: '210px',
+          gap: '6px',
+          alignItems: 'center',
+        });
+
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = `${min}`;
+        input.max = `${max}`;
+        input.step = `${step}`;
+
+        const stepText = `${step}`;
+        const decimalPlaces = stepText.includes('.') ? stepText.split('.')[1].length : 0;
+        const formatValue = value => {
+          if (!Number.isFinite(value)) {
+            return `${min}`;
+          }
+          return decimalPlaces > 0 ? value.toFixed(Math.min(6, decimalPlaces)) : `${Math.round(value)}`;
+        };
+
+        const valueEl = document.createElement('input');
+        valueEl.type = 'number';
+        valueEl.min = `${min}`;
+        valueEl.max = `${max}`;
+        valueEl.step = `${step}`;
+        Object.assign(valueEl.style, {
+          width: '82px',
+          textAlign: 'right',
+          fontVariantNumeric: 'tabular-nums',
+          background: 'rgba(0,0,0,0.5)',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.3)',
+          borderRadius: '4px',
+          padding: '2px 4px',
+        });
+
+        const clamp = value => Math.max(min, Math.min(max, value));
+
+        const sync = () => {
+          const value = Number(getValue());
+          const normalized = Number.isFinite(value) ? clamp(value) : min;
+          input.value = `${normalized}`;
+          valueEl.value = formatValue(normalized);
+        };
+
+        input.addEventListener('input', () => {
+          const value = clamp(Number.parseFloat(input.value));
+          setValue(value);
+          valueEl.value = formatValue(value);
+          rebuildComposer();
+        });
+
+        valueEl.addEventListener('change', () => {
+          const parsed = Number.parseFloat(valueEl.value);
+          if (!Number.isFinite(parsed)) {
+            sync();
+            return;
+          }
+          const value = clamp(parsed);
+          setValue(value);
+          input.value = `${value}`;
+          valueEl.value = formatValue(value);
+          rebuildComposer();
+        });
+
+        sync();
+        wrap.appendChild(input);
+        wrap.appendChild(valueEl);
+        row.appendChild(labelEl);
+        row.appendChild(wrap);
+        parent.appendChild(row);
+      };
+
+      const addColorControl = (parent, { label, getValue, setValue }) => {
+        const row = document.createElement('label');
+        Object.assign(row.style, {
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: '8px',
+          alignItems: 'center',
+          fontSize: '12px',
+          marginBottom: '5px',
+        });
+
+        const labelEl = document.createElement('span');
+        labelEl.textContent = label;
+        const input = document.createElement('input');
+        input.type = 'color';
+        input.value = getValue();
+        Object.assign(input.style, {
+          width: '40px',
+          height: '22px',
+          border: 'none',
+          background: 'transparent',
+        });
+
+        input.addEventListener('input', () => {
+          setValue(input.value);
+          rebuildComposer();
+        });
+
+        row.appendChild(labelEl);
+        row.appendChild(input);
+        parent.appendChild(row);
+      };
+
+      const addToneMappingControl = parent => {
+        const row = document.createElement('label');
+        Object.assign(row.style, {
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: '8px',
+          alignItems: 'center',
+          fontSize: '12px',
+          marginBottom: '5px',
+        });
+
+        const labelEl = document.createElement('span');
+        labelEl.textContent = 'Tone Mapping';
+
+        const select = document.createElement('select');
+        Object.assign(select.style, {
+          minWidth: '150px',
+          background: 'rgba(0,0,0,0.5)',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.3)',
+          borderRadius: '6px',
+          padding: '4px 6px',
+        });
+
+        toneMappingOptions.forEach(option => {
+          const el = document.createElement('option');
+          el.value = `${option.value}`;
+          el.textContent = option.label;
+          select.appendChild(el);
+        });
+
+        select.value = `${effects.toneMapping.method}`;
+        select.addEventListener('change', () => {
+          effects.toneMapping.method = Number.parseFloat(select.value);
+          renderer.toneMapping = effects.toneMapping.method;
+          rebuildComposer();
+        });
+
+        row.appendChild(labelEl);
+        row.appendChild(select);
+        parent.appendChild(row);
+      };
+
+      const addSettingsForPass = (passId, parent) => {
+        if (passId === 'bloom') {
+          addRangeControl(parent, {
+            label: 'Strength', min: 0, max: 10, step: 0.001,
+            getValue: () => effects.bloom.settings.strength,
+            setValue: value => { effects.bloom.settings.strength = value; },
+          });
+          addRangeControl(parent, {
+            label: 'Radius', min: -10, max: 10, step: 0.001,
+            getValue: () => effects.bloom.settings.radius,
+            setValue: value => { effects.bloom.settings.radius = value; },
+          });
+          addRangeControl(parent, {
+            label: 'Threshold', min: 0, max: 10, step: 0.001,
+            getValue: () => effects.bloom.settings.threshold,
+            setValue: value => { effects.bloom.settings.threshold = value; },
+          });
+        }
+
+        if (passId === 'RGBShift') {
+          addRangeControl(parent, {
+            label: 'Amount', min: 0, max: 0.1, step: 0.0001,
+            getValue: () => effects.RGBShift.shader.uniforms.amount.value,
+            setValue: value => { effects.RGBShift.shader.uniforms.amount.value = value; },
+          });
+          addRangeControl(parent, {
+            label: 'Angle', min: 0, max: Math.PI * 2, step: 0.001,
+            getValue: () => effects.RGBShift.shader.uniforms.angle.value,
+            setValue: value => { effects.RGBShift.shader.uniforms.angle.value = value; },
+          });
+        }
+
+        if (passId === 'afterImagePass') {
+          addRangeControl(parent, {
+            label: 'Damp', min: 0, max: 1, step: 0.001,
+            getValue: () => effects.afterImagePass.shader.uniforms.damp.value,
+            setValue: value => { effects.afterImagePass.shader.uniforms.damp.value = value; },
+          });
+        }
+
+        if (passId === 'colorifyShader') {
+          addColorControl(parent, {
+            label: 'Hue',
+            getValue: () => `#${effects.colorifyShader.color.getHexString()}`,
+            setValue: value => { effects.colorifyShader.color.set(value); },
+          });
+        }
+
+        if (passId === 'kaleidoShader') {
+          addRangeControl(parent, {
+            label: 'Sides', min: 1, max: 24, step: 1,
+            getValue: () => effects.kaleidoShader.shader.uniforms.sides.value,
+            setValue: value => { effects.kaleidoShader.shader.uniforms.sides.value = Math.max(1, Math.round(value)); },
+          });
+          addRangeControl(parent, {
+            label: 'Angle', min: 0, max: Math.PI * 2, step: 0.001,
+            getValue: () => effects.kaleidoShader.shader.uniforms.angle.value,
+            setValue: value => { effects.kaleidoShader.shader.uniforms.angle.value = value; },
+          });
+        }
+
+        if (passId === 'outputPass') {
+          addToneMappingControl(parent);
+          addRangeControl(parent, {
+            label: 'Exposure', min: -500, max: 500, step: 0.01,
+            getValue: () => renderer.toneMappingExposure,
+            setValue: value => { renderer.toneMappingExposure = value; },
+          });
+        }
+      };
+
+      const renderStack = () => {
+        stackList.innerHTML = '';
+        const orderedLayers = effects.getPassOrder();
+
+        orderedLayers.forEach((passId, index) => {
+          const row = document.createElement('div');
+          row.dataset.layerId = passId;
+          Object.assign(row.style, {
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '8px',
+            padding: '6px',
+            background: 'rgba(255,255,255,0.03)',
+          });
+
+          const header = document.createElement('div');
+          Object.assign(header.style, {
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr auto',
+            alignItems: 'center',
+            gap: '8px',
+          });
+
+          const dragHandle = document.createElement('div');
+          const isLocked = passId === 'outputPass';
+          dragHandle.textContent = isLocked ? 'x' : '::';
+          Object.assign(dragHandle.style, {
+            opacity: isLocked ? '0.45' : '0.7',
+            cursor: isLocked ? 'not-allowed' : 'grab',
+            userSelect: 'none',
+            fontWeight: '700',
+            width: '18px',
+            textAlign: 'center',
+          });
+
+          const nameEl = document.createElement('div');
+          nameEl.textContent = `${index + 1}. ${layerLabels[passId] ?? passId}`;
+          nameEl.style.fontSize = '13px';
+          nameEl.style.fontWeight = '600';
+
+          const toggle = document.createElement('input');
+          toggle.type = 'checkbox';
+          toggle.checked = Boolean(effects[passId]?.enabled);
+          toggle.addEventListener('change', () => {
+            if (!effects[passId]) {
+              return;
+            }
+            effects[passId].enabled = toggle.checked;
+            if (passId === 'sobelShader') {
+              syncSobelResolution();
+            }
+            rebuildComposer();
+            renderStack();
+          });
+
+          header.appendChild(dragHandle);
+          header.appendChild(nameEl);
+          header.appendChild(toggle);
+          row.appendChild(header);
+
+          const settings = document.createElement('div');
+          Object.assign(settings.style, {
+            marginTop: '8px',
+            paddingTop: '8px',
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            display: toggle.checked || passId === 'outputPass' ? 'block' : 'none',
+          });
+          addSettingsForPass(passId, settings);
+          if (settings.childElementCount > 0) {
+            row.appendChild(settings);
+          }
+
+          row.draggable = false;
+          if (!isLocked) {
+            dragHandle.draggable = true;
+
+            dragHandle.addEventListener('pointerdown', () => {
+              row.draggable = true;
+            });
+
+            dragHandle.addEventListener('pointerup', () => {
+              row.draggable = false;
+            });
+
+            dragHandle.addEventListener('pointercancel', () => {
+              row.draggable = false;
+            });
+
+            row.addEventListener('dragstart', event => {
+              if (event.target !== dragHandle) {
+                event.preventDefault();
+                row.draggable = false;
+                return;
+              }
+              draggedLayerId = passId;
+              row.style.opacity = '0.55';
+              clearDropIndicators();
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', passId);
+            });
+
+            row.addEventListener('dragend', () => {
+              row.style.opacity = '1';
+              draggedLayerId = null;
+              clearDropIndicators();
+              row.draggable = false;
+            });
+          }
+
+          row.addEventListener('dragenter', event => {
+            if (!draggedLayerId || draggedLayerId === passId) {
+              return;
+            }
+            event.preventDefault();
+            clearDropIndicators();
+            row.style.outline = '2px solid rgba(123, 190, 255, 0.95)';
+            row.style.background = 'rgba(123, 190, 255, 0.2)';
+          });
+
+          row.addEventListener('dragleave', event => {
+            if (!event.currentTarget?.contains(event.relatedTarget)) {
+              row.style.outline = 'none';
+              row.style.background = 'rgba(255,255,255,0.03)';
+            }
+          });
+
+          row.addEventListener('dragover', event => {
+            if (!draggedLayerId) {
+              return;
+            }
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          });
+
+          row.addEventListener('drop', event => {
+            if (!draggedLayerId) {
+              return;
+            }
+            event.preventDefault();
+
+            const currentOrder = effects.getPassOrder();
+            const movable = currentOrder.filter(id => id !== 'outputPass');
+            const from = movable.indexOf(draggedLayerId);
+            if (from < 0) {
+              return;
+            }
+
+            const targetLayerId = row.dataset.layerId;
+            let to = movable.indexOf(targetLayerId);
+            if (targetLayerId === 'outputPass') {
+              to = movable.length - 1;
+            }
+            if (to < 0) {
+              return;
+            }
+
+            const [moved] = movable.splice(from, 1);
+            movable.splice(to, 0, moved);
+            effects.setPassOrder([...movable, 'outputPass']);
+            rebuildComposer();
+            renderStack();
+          });
+
+          stackList.appendChild(row);
+        });
+      };
+
+      const closeRow = document.createElement('div');
+      Object.assign(closeRow.style, {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        marginTop: '6px',
+      });
+
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.textContent = 'Close';
+      Object.assign(closeButton.style, {
+        border: '1px solid rgba(255,255,255,0.25)',
+        borderRadius: '6px',
+        background: 'rgba(255,255,255,0.1)',
+        color: '#fff',
+        padding: '6px 10px',
+        cursor: 'pointer',
+      });
+
+      const refresh = () => {
+        renderStack();
+      };
+
+      const close = () => {
+        clearDropIndicators();
+        overlay.style.display = 'none';
+      };
+
+      const positionDock = () => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const gutter = 12;
+        const viewportMargin = 8;
+
+        let panelWidth = Math.min(380, Math.max(280, Math.floor(window.innerWidth * 0.32)));
+        const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
+        panelWidth = Math.min(panelWidth, maxAllowed);
+        panel.style.width = `${panelWidth}px`;
+
+        const rightSpace = window.innerWidth - rect.right - gutter;
+        const leftSpace = rect.left - gutter;
+
+        let left = rect.right + gutter;
+
+        if (rightSpace < panelWidth && leftSpace >= panelWidth) {
+          left = rect.left - panelWidth - gutter;
+        } else if (rightSpace < panelWidth && leftSpace < panelWidth) {
+          panelWidth = Math.max(240, Math.min(window.innerWidth - viewportMargin * 2, panelWidth));
+          panel.style.width = `${panelWidth}px`;
+          left = Math.max(
+            viewportMargin,
+            Math.min(rect.right + gutter, window.innerWidth - panelWidth - viewportMargin),
+          );
+        }
+
+        const top = Math.max(
+          viewportMargin,
+          Math.min(rect.top, window.innerHeight - 120),
+        );
+        const maxHeight = Math.max(
+          220,
+          Math.min(rect.height, window.innerHeight - top - viewportMargin),
+        );
+
+        overlay.style.left = `${Math.round(left)}px`;
+        overlay.style.top = `${Math.round(top)}px`;
+        panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
+      };
+
+      const handleViewportLayoutChange = () => {
+        if (overlay.style.display !== 'none') {
+          positionDock();
+        }
+      };
+
+      const open = () => {
+        refresh();
+        positionDock();
+        overlay.style.display = 'block';
+      };
+
+      closeButton.addEventListener('click', close);
+
+      window.addEventListener('resize', handleViewportLayoutChange);
+      window.addEventListener('scroll', handleViewportLayoutChange, true);
+
+      closeRow.appendChild(closeButton);
+      panel.appendChild(title);
+      panel.appendChild(hint);
+      stackSection.appendChild(stackTitle);
+      stackSection.appendChild(stackList);
+      panel.appendChild(stackSection);
+      panel.appendChild(closeRow);
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+
+      return {
+        element: overlay,
+        open,
+        close,
+        refresh,
+      };
+    };
+
+    const createSceneCameraDock = () => {
+      const overlay = document.createElement('div');
+      overlay.className = 'mage-scene-camera-dock';
+      Object.assign(overlay.style, {
+        position: 'fixed',
+        zIndex: '40',
+        display: 'none',
+        pointerEvents: 'none',
+      });
+
+      const panel = document.createElement('div');
+      Object.assign(panel.style, {
+        width: '320px',
+        maxHeight: '84vh',
+        overflow: 'auto',
+        padding: '12px',
+        borderRadius: '12px',
+        border: '1px solid rgba(255,255,255,0.2)',
+        background: 'rgba(13, 17, 26, 0.95)',
+        color: '#fff',
+        display: 'grid',
+        gap: '10px',
+        pointerEvents: 'auto',
+        boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
+      });
+
+      const title = document.createElement('div');
+      title.textContent = 'Scene + Camera';
+      Object.assign(title.style, {
+        fontSize: '16px',
+        fontWeight: '700',
+      });
+
+      const hint = document.createElement('div');
+      hint.textContent = 'Visualizer state and camera controls.';
+      Object.assign(hint.style, {
+        fontSize: '12px',
+        opacity: '0.8',
+      });
+
+      const makeSection = label => {
+        const section = document.createElement('div');
+        Object.assign(section.style, {
+          border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: '10px',
+          padding: '8px',
+        });
+
+        const sectionTitle = document.createElement('div');
+        sectionTitle.textContent = label;
+        Object.assign(sectionTitle.style, {
+          fontSize: '13px',
+          fontWeight: '600',
+          marginBottom: '8px',
+        });
+        section.appendChild(sectionTitle);
+
+        const content = document.createElement('div');
+        content.style.display = 'grid';
+        section.appendChild(content);
+        return { section, content };
+      };
+
+      const makeRow = (parent, labelText) => {
+        const row = document.createElement('label');
+        Object.assign(row.style, {
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          alignItems: 'center',
+          gap: '10px',
+          marginBottom: '6px',
+          fontSize: '12px',
+        });
+        const label = document.createElement('span');
+        label.textContent = labelText;
+        row.appendChild(label);
+        parent.appendChild(row);
+        return row;
+      };
+
+      const sceneSection = makeSection('Scene Settings');
+      const cameraSection = makeSection('Camera Settings');
+      const syncers = [];
+
+      const addRangeControl = (parent, { label, min, max, step = 0.001, getValue, setValue, onCommit }) => {
+        const row = makeRow(parent, label);
+        const wrap = document.createElement('div');
+        Object.assign(wrap.style, {
+          display: 'grid',
+          gridTemplateColumns: '1fr auto auto',
+          alignItems: 'center',
+          gap: '8px',
+          minWidth: '220px',
+        });
+
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = `${min}`;
+        input.max = `${max}`;
+        input.step = `${step}`;
+
+        const stepText = `${step}`;
+        const decimalPlaces = stepText.includes('.') ? stepText.split('.')[1].length : 0;
+        const formatValue = value => {
+          if (!Number.isFinite(value)) {
+            return `${min}`;
+          }
+          return decimalPlaces > 0 ? value.toFixed(Math.min(6, decimalPlaces)) : `${Math.round(value)}`;
+        };
+
+        const valueLabel = document.createElement('input');
+        valueLabel.type = 'number';
+        valueLabel.min = `${min}`;
+        valueLabel.max = `${max}`;
+        valueLabel.step = `${step}`;
+        Object.assign(valueLabel.style, {
+          width: '86px',
+          textAlign: 'right',
+          fontVariantNumeric: 'tabular-nums',
+          background: 'rgba(0,0,0,0.5)',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.3)',
+          borderRadius: '4px',
+          padding: '2px 4px',
+        });
+
+        const clamp = value => Math.max(min, Math.min(max, value));
+
+        const sync = () => {
+          const value = Number(getValue());
+          const normalized = Number.isFinite(value) ? clamp(value) : min;
+          input.value = `${normalized}`;
+          valueLabel.value = formatValue(normalized);
+        };
+
+        input.addEventListener('input', () => {
+          const value = clamp(Number.parseFloat(input.value));
+          setValue(value);
+          valueLabel.value = formatValue(value);
+          if (typeof onCommit === 'function') {
+            onCommit();
+          }
+        });
+
+        valueLabel.addEventListener('change', () => {
+          const parsed = Number.parseFloat(valueLabel.value);
+          if (!Number.isFinite(parsed)) {
+            sync();
+            return;
+          }
+          const value = clamp(parsed);
+          setValue(value);
+          input.value = `${value}`;
+          valueLabel.value = formatValue(value);
+          if (typeof onCommit === 'function') {
+            onCommit();
+          }
+        });
+
+        wrap.appendChild(input);
+        wrap.appendChild(valueLabel);
+        row.appendChild(wrap);
+        syncers.push(sync);
+        sync();
+      };
+
+      const addCheckboxControl = (parent, { label, getValue, setValue, onCommit }) => {
+        const row = makeRow(parent, label);
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+
+        const sync = () => {
+          input.checked = Boolean(getValue());
+        };
+
+        input.addEventListener('change', () => {
+          setValue(input.checked);
+          if (typeof onCommit === 'function') {
+            onCommit();
+          }
+        });
+
+        row.appendChild(input);
+        syncers.push(sync);
+        sync();
+      };
+
+      const addSelectControl = (parent, { label, options, getValue, setValue, onCommit }) => {
+        const row = makeRow(parent, label);
+        const select = document.createElement('select');
+        Object.assign(select.style, {
+          minWidth: '170px',
+          background: 'rgba(0,0,0,0.5)',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.3)',
+          borderRadius: '6px',
+          padding: '4px 6px',
+        });
+
+        options.forEach(option => {
+          const el = document.createElement('option');
+          el.value = `${option.value}`;
+          el.textContent = option.label;
+          select.appendChild(el);
+        });
+
+        const sync = () => {
+          select.value = `${getValue()}`;
+        };
+
+        select.addEventListener('change', () => {
+          setValue(Number.parseFloat(select.value));
+          if (typeof onCommit === 'function') {
+            onCommit();
+          }
+        });
+
+        row.appendChild(select);
+        syncers.push(sync);
+        sync();
+      };
+
+      const embeddedSkyboxIds = Object.keys(EMBEDDED_SKYBOXES)
+        .map(value => Number.parseInt(value, 10))
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+
+      if (
+        embeddedSkyboxIds.length > 0
+        && !embeddedSkyboxIds.includes(Number.parseInt(`${visualizer.skyboxPreset}`, 10))
+      ) {
+        visualizer.skyboxPreset = embeddedSkyboxIds[0];
+      }
+
+      addSelectControl(sceneSection.content, {
+        label: 'Skybox',
+        options: embeddedSkyboxIds.map(id => ({ label: `${id}`, value: id })),
+        getValue: () => Number.parseInt(`${visualizer.skyboxPreset}`, 10) || embeddedSkyboxIds[0] || 0,
+        setValue: value => {
+          visualizer.skyboxPreset = value;
+          engine.#_loadSkybox({
+            type: 'preset',
+            presetId: Number.parseInt(`${value}`, 10) || 0,
+          });
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'MOD 1',
+        min: 0.01,
+        max: 2.0,
+        getValue: () => state.minimizing_factor,
+        setValue: value => {
+          state.minimizing_factor = value;
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'MOD 2',
+        min: 1.0,
+        max: 10.0,
+        step: 0.01,
+        getValue: () => state.power_factor,
+        setValue: value => {
+          state.power_factor = value;
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'MOD 3',
+        min: 0.0,
+        max: 1.0,
+        getValue: () => state.pointerDownMultiplier,
+        setValue: value => {
+          state.pointerDownMultiplier = value;
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'Base Speed',
+        min: 0.01,
+        max: 0.9,
+        getValue: () => state.base_speed,
+        setValue: value => {
+          state.base_speed = value;
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'Easing Speed',
+        min: 0.01,
+        max: 0.9,
+        getValue: () => state.easing_speed,
+        setValue: value => {
+          state.easing_speed = value;
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'Scale',
+        min: 1,
+        max: 200,
+        step: 0.1,
+        getValue: () => visualizer.scale,
+        setValue: value => {
+          visualizer.scale = value;
+        },
+      });
+
+      addCheckboxControl(sceneSection.content, {
+        label: 'Auto Rotate',
+        getValue: () => controls.autoRotate,
+        setValue: value => {
+          controls.autoRotate = value;
+        },
+      });
+
+      addRangeControl(sceneSection.content, {
+        label: 'Rotation Speed',
+        min: 0.1,
+        max: 50,
+        step: 0.01,
+        getValue: () => controls.autoRotateSpeed,
+        setValue: value => {
+          controls.autoRotateSpeed = value;
+        },
+      });
+
+      addRangeControl(cameraSection.content, {
+        label: 'FOV',
+        min: 1,
+        max: 359,
+        step: 1,
+        getValue: () => camera.fov,
+        setValue: value => {
+          camera.fov = value;
+          camera.updateProjectionMatrix();
+        },
+      });
+
+      addRangeControl(cameraSection.content, {
+        label: 'Camera Orientation',
+        min: 0,
+        max: 2 * Math.PI,
+        step: 0.001,
+        getValue: () => state.camTilt,
+        setValue: value => {
+          state.camTilt = value;
+          camera.up.set(
+            Math.sin(state.camTilt),
+            Math.cos(state.camTilt),
+            -Math.sin(state.camTilt),
+          );
+        },
+      });
+
+      const resetRow = document.createElement('div');
+      Object.assign(resetRow.style, {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        marginTop: '6px',
+      });
+      const resetButton = document.createElement('button');
+      resetButton.type = 'button';
+      resetButton.textContent = 'Reset Camera';
+      Object.assign(resetButton.style, {
+        border: '1px solid rgba(255,255,255,0.25)',
+        borderRadius: '6px',
+        background: 'rgba(255,255,255,0.1)',
+        color: '#fff',
+        padding: '6px 10px',
+        cursor: 'pointer',
+      });
+      resetButton.addEventListener('click', () => {
+        controls.reset();
+      });
+      resetRow.appendChild(resetButton);
+      cameraSection.content.appendChild(resetRow);
+
+      const closeRow = document.createElement('div');
+      Object.assign(closeRow.style, {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        marginTop: '6px',
+      });
+
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.textContent = 'Close';
+      Object.assign(closeButton.style, {
+        border: '1px solid rgba(255,255,255,0.25)',
+        borderRadius: '6px',
+        background: 'rgba(255,255,255,0.1)',
+        color: '#fff',
+        padding: '6px 10px',
+        cursor: 'pointer',
+      });
+
+      const refresh = () => {
+        syncers.forEach(sync => sync());
+      };
+
+      const close = () => {
+        overlay.style.display = 'none';
+      };
+
+      const positionDock = () => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const gutter = 12;
+        const viewportMargin = 8;
+
+        let panelWidth = Math.min(360, Math.max(280, Math.floor(window.innerWidth * 0.28)));
+        const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
+        panelWidth = Math.min(panelWidth, maxAllowed);
+        panel.style.width = `${panelWidth}px`;
+
+        const leftSpace = rect.left - gutter;
+        const rightSpace = window.innerWidth - rect.right - gutter;
+        const leftNudge = 30; // increase for more left shift
+
+        let left = rect.left - panelWidth - gutter - leftNudge;
+        if (leftSpace < panelWidth && rightSpace >= panelWidth) {
+          left = rect.right + gutter;
+        } else if (leftSpace < panelWidth && rightSpace < panelWidth) {
+          left = viewportMargin;
+        }
+
+        const top = Math.max(viewportMargin, Math.min(rect.top, window.innerHeight - 120));
+        const maxHeight = Math.max(220, Math.min(rect.height, window.innerHeight - top - viewportMargin));
+
+        overlay.style.left = `${Math.round(left)}px`;
+        overlay.style.top = `${Math.round(top)}px`;
+        panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
+      };
+
+      const handleViewportLayoutChange = () => {
+        if (overlay.style.display !== 'none') {
+          positionDock();
+        }
+      };
+
+      const open = () => {
+        refresh();
+        positionDock();
+        overlay.style.display = 'block';
+      };
+
+      closeButton.addEventListener('click', close);
+      window.addEventListener('resize', handleViewportLayoutChange);
+      window.addEventListener('scroll', handleViewportLayoutChange, true);
+
+      closeRow.appendChild(closeButton);
+      panel.appendChild(title);
+      panel.appendChild(hint);
+      panel.appendChild(sceneSection.section);
+      panel.appendChild(cameraSection.section);
+      panel.appendChild(closeRow);
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+
+      return {
+        element: overlay,
+        open,
+        close,
+        refresh,
+      };
+    };
+
+    const initTweakpane = () => {
+
+      // const previousPresetLoaded = engine.#onPresetLoaded;
+      // engine.#onPresetLoaded = preset => {
+      //   if (typeof previousPresetLoaded === 'function') {
+      //     previousPresetLoaded(preset);
+      //   }
+      //   setQuickPresetsVisible(!preset);
+      // };
+
+      // engine.setEmbeddedPresetButtonsVisible = visible => {
+      //   setQuickPresetsVisible(Boolean(visible));
+      // };
+
+      const paneMount = document.createElement('div');
+      paneMount.className = 'mage-pane-host';
+      Object.assign(paneMount.style, {
+        position: 'absolute',
+        top: '8px',
+        right: '8px',
+        zIndex: '20',
+      });
+      host.appendChild(paneMount);
+
+      pane = new Pane({ container: paneMount });
+
+      pane
+        .addButton({
+          title: 'Randomize',
+          label: '???',
+        })
+        .on('click', () => {
+          randomizeSettings();
+          pane.refresh();
+        });
+
+      fxStudioOverlay = createFxStudioOverlay();
+      sceneCameraDock = createSceneCameraDock();
+      pane.hidden = true;
+
+      // Expose tweakpane state export so engine.toPreset can include settings.
+      engine.#exportSettingsState = () => {
+        if (!pane) {
+          return null;
+        }
+        return pane.exportState();
+      };
+
+      engine.#importSettingsState = state => {
+        if (!pane) {
+          return;
+        } else {
+          pane.importState(state);
+          pane.refresh();
+
+          renderer.toneMapping = effects.toneMapping.method;
+          if (typeof engine.#_syncSobelResolution === 'function') {
+            engine.#_syncSobelResolution();
+          }
+
+          rebuildComposer();
+          sceneCameraDock?.refresh();
+          fxStudioOverlay?.refresh();
+        } 
+      };
+
+      engine.#refreshSettingsUI = () => {
+        if (!pane) {
+          return;
+        }
+        pane.refresh();
+        fxStudioOverlay?.refresh();
+        sceneCameraDock?.refresh();
+      };
+    };
+
+    const getOS = () => {
+      const userAgent = window.navigator.userAgent;
+      const platform =
+        window.navigator?.userAgentData?.platform || window.navigator.platform;
+      const macosPlatforms = ['macOS', 'Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'];
+      const windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'];
+      const iosPlatforms = ['iPhone', 'iPad', 'iPod'];
+      let os = null;
+
+      if (macosPlatforms.indexOf(platform) !== -1) {
+        os = 'Mac OS';
+      } else if (iosPlatforms.indexOf(platform) !== -1) {
+        os = 'iOS';
+      } else if (windowsPlatforms.indexOf(platform) !== -1) {
+        os = 'Windows';
+      } else if (/Android/.test(userAgent)) {
+        os = 'Android';
+      } else if (/Linux/.test(platform)) {
+        os = 'Linux';
+      }
+
+      return os;
+    };
+
+    const toggleUI = () => {
+      // const buttonsContainer = document.querySelector('.ui_buttons');
+      // buttonsContainer.style.display =
+      //   buttonsContainer.style.display === 'flex' ? 'none' : 'flex';
+              // const tooltipImage = tooltipUI.element.querySelector('img');
+          // if (tooltipImage) {
+          //   tooltipImage.hidden = false;
+          // }
+          // visualizer.render_tooltips = true;
+          // tooltipUI.visible = true;
+      if (pane) {
+        pane.hidden = !pane.hidden;
+        if (pane.hidden && fxStudioOverlay) {
+          fxStudioOverlay.close();
+        } else {
+          fxStudioOverlay.open();
+        }
+        if (pane.hidden && sceneCameraDock) {
+          sceneCameraDock.close();
+        } else {
+          sceneCameraDock.open();
+        }
+      }
+    };
+
+    const switchControls = () => {
+      visualizer.render_tooltips = false;
+      if (pane) {
+        pane.hidden = true;
+      }
+      toggleUI();
+      const hideUIbutton = document.getElementById('ui_hide');
+      hideUIbutton.style.display = 'none';
+    };
+
+    const eventSetup = () => {
+      const quickPresetHost = document.createElement('div');
+      const visiblePresetIds = EMBEDDED_PRESET_IDS.filter(presetId => presetId !== 0);
+      let quickPresetButtons = [];
+      const quickPresetPreviewImages = new Map();
+      let selectedPresetId = null;
+      const engineLoadingMask = document.createElement('div');
+      const engineLoadingLabel = document.createElement('div');
+
+      const setQuickPresetsVisible = visible => {
+        quickPresetHost.style.display = visible ? 'flex' : 'none';
+        if (visible) {
+          positionPresetDock();
+        }
+      };
+
+      quickPresetHost.className = 'mage-embedded-presets';
+      Object.assign(quickPresetHost.style, {
+        position: 'fixed',
+        zIndex: '41',
+        display: 'none',
+        flexDirection: 'column',
+        gap: '10px',
+        padding: '10px',
+        maxHeight: '72vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        borderRadius: '12px',
+        border: '1px solid rgba(255,255,255,0.16)',
+        background: 'linear-gradient(150deg, rgba(18,26,38,0.78), rgba(11,16,25,0.82))',
+        backdropFilter: 'blur(8px)',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+        alignItems: 'flex-start',
+      });
+      document.body.appendChild(quickPresetHost);
+
+      const positionPresetDock = () => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const gutter = 12;
+        const viewportMargin = 8;
+        const panelWidth = 214;
+        const leftSpace = rect.left - gutter;
+        const rightSpace = window.innerWidth - rect.right - gutter;
+        const leftNudge = 30;
+
+        let left = rect.left - panelWidth - gutter - leftNudge;
+        if (leftSpace < panelWidth && rightSpace >= panelWidth) {
+          left = rect.right + gutter;
+        } else if (leftSpace < panelWidth && rightSpace < panelWidth) {
+          left = viewportMargin;
+        }
+
+        const top = Math.max(viewportMargin, Math.min(rect.top, window.innerHeight - 120));
+        const maxHeight = Math.max(220, Math.min(rect.height, window.innerHeight - top - viewportMargin));
+
+        quickPresetHost.style.left = `${Math.round(left)}px`;
+        quickPresetHost.style.top = `${Math.round(top)}px`;
+        quickPresetHost.style.maxHeight = `${Math.floor(maxHeight)}px`;
+      };
+
+      const handlePresetDockLayoutChange = () => {
+        if (quickPresetHost.style.display !== 'none') {
+          positionPresetDock();
+        }
+      };
+      window.addEventListener('resize', handlePresetDockLayoutChange);
+      window.addEventListener('scroll', handlePresetDockLayoutChange, true);
+
+      engineLoadingMask.className = 'mage-engine-loading-mask';
+      Object.assign(engineLoadingMask.style, {
+        position: 'absolute',
+        inset: '0',
+        zIndex: '35',
+        display: 'none',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(6,10,16,0.9)',
+        pointerEvents: 'auto',
+        backdropFilter: 'blur(3px)',
+      });
+
+      engineLoadingLabel.textContent = 'Loading engine...';
+      Object.assign(engineLoadingLabel.style, {
+        color: '#fff',
+        fontSize: '14px',
+        fontWeight: '700',
+        letterSpacing: '0.02em',
+        borderRadius: '999px',
+        border: '1px solid rgba(255,255,255,0.22)',
+        background: 'rgba(14,22,34,0.86)',
+        padding: '10px 14px',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+      });
+      engineLoadingMask.appendChild(engineLoadingLabel);
+      host.appendChild(engineLoadingMask);
+
+      const setEngineLoadingMaskActive = (active, message = 'Loading engine...') => {
+        const visible = Boolean(active);
+        engineLoadingMask.style.display = visible ? 'flex' : 'none';
+        engineLoadingLabel.textContent = message;
+        if (renderer?.domElement) {
+          renderer.domElement.style.visibility = visible ? 'hidden' : 'visible';
+        }
+        if (visible && typeof engine.showViewportMessage === 'function') {
+          engine.showViewportMessage(message, 60_000);
+        } else if (!visible && typeof engine.#_hideViewportMessage === 'function') {
+          engine.#_hideViewportMessage();
+        }
+      };
+
+      const setQuickPresetButtonsDisabled = disabled => {
+        for (const button of quickPresetButtons) {
+          button.disabled = disabled;
+          button.style.opacity = disabled ? '0.6' : '1';
+          button.style.cursor = disabled ? 'progress' : 'pointer';
+        }
+      };
+
+      const previewSize = 184;
+
+      quickPresetButtons = visiblePresetIds.map(presetId => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        Object.assign(button.style, {
+          border: '1px solid rgba(255,255,255,0.25)',
+          borderRadius: '10px',
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))',
+          color: '#fff',
+          fontSize: '11px',
+          fontWeight: '600',
+          letterSpacing: '0.02em',
+          lineHeight: '1',
+          padding: '6px',
+          cursor: 'pointer',
+          display: 'grid',
+          gap: '6px',
+          width: '194px',
+          textAlign: 'left',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.28)',
+          transition: 'transform 120ms ease, filter 120ms ease, opacity 120ms ease',
+        });
+
+        const preview = document.createElement('img');
+        preview.alt = `Preset ${presetId} preview`;
+        preview.width = previewSize;
+        preview.height = previewSize;
+        preview.loading = 'lazy';
+        // const thumbnailSrc = getEmbeddedPresetThumbnailById(presetId);
+        // if (thumbnailSrc) {
+        //   preview.src = thumbnailSrc;
+        // }
+        Object.assign(preview.style, {
+          width: `${previewSize}px`,
+          height: `${previewSize}px`,
+          objectFit: 'contain',
+          aspectRatio: '1 / 1',
+          borderRadius: '8px',
+          border: '1px solid rgba(255,255,255,0.2)',
+          background:
+            'radial-gradient(circle at 20% 20%, rgba(66,191,255,0.35), rgba(49,129,255,0.2) 35%, rgba(15,20,30,0.9) 70%)',
+          opacity: '0.92',
+        });
+
+        const caption = document.createElement('div');
+        caption.textContent = `Preset ${presetId}`;
+        Object.assign(caption.style, {
+          fontSize: '11px',
+          fontWeight: '700',
+          padding: '0 2px 2px',
+        });
+
+        button.appendChild(preview);
+        button.appendChild(caption);
+        quickPresetPreviewImages.set(presetId, preview);
+
+        button.addEventListener('mouseenter', () => {
+          button.style.transform = 'translateY(-1px)';
+          button.style.filter = 'brightness(1.06)';
+        });
+        button.addEventListener('mouseleave', () => {
+          button.style.transform = 'translateY(0)';
+          button.style.filter = 'brightness(1)';
+        });
+
+        button.addEventListener('click', async () => {
+          setQuickPresetButtonsDisabled(true);
+          const ok = await loadPresetById(presetId);
+          setQuickPresetButtonsDisabled(false);
+          if (ok) {
+            selectedPresetId = presetId;
+            setQuickPresetsVisible(false);
+          }
+        });
+
+        quickPresetHost.appendChild(button);
+
+        return button;
+      });
+
+      // Controls own quick-preset visibility state instead of reading engine.#currentPreset.
+      setQuickPresetsVisible(!selectedPresetId);
+
+      const replaceWithRuntimePresetPreviews = async () => {
+        if (typeof engine.captureThumbnail !== 'function') {
+          return;
+        }
+
+        setEngineLoadingMaskActive(true, 'Loading engine...');
+        setQuickPresetButtonsDisabled(true);
+
+        try {
+          const total = visiblePresetIds.length;
+          for (let index = 0; index < total; index += 1) {
+            const presetId = visiblePresetIds[index];
+            const preset = getEmbeddedPresetById(presetId);
+            const imageEl = quickPresetPreviewImages.get(presetId);
+            if (!preset || !imageEl) {
+              continue;
+            }
+
+            setEngineLoadingMaskActive(true, `Loading engine... (${index + 1}/${total})`);
+            const settleFrames = index < 3 ? 4 : 2;
+            const dataUrl = await engine.captureThumbnail(preset, {
+              settleFrames,
+              width: previewSize,
+              height: previewSize,
+            });
+
+            if (dataUrl) {
+              imageEl.src = dataUrl;
+            }
+          }
+        } finally {
+          setEngineLoadingMaskActive(false);
+          setQuickPresetButtonsDisabled(false);
+        }
+      };
+
+      setTimeout(() => {
+        replaceWithRuntimePresetPreviews().catch(() => {
+          setEngineLoadingMaskActive(false);
+          setQuickPresetButtonsDisabled(false);
+        });
+      }, 120);
+
+      const bindClick = (id, handler) => {
+        const element = document.getElementById(id);
+        if (element) {
+          element.addEventListener('click', handler);
+        }
+      };
+
+      const isPointerInViewport = event => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        return (
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        );
+      };
+
+      const clearViewportInteractionState = () => {
+        // inputs.currMouse.x = 2;
+        // inputs.currMouse.y = 2;
+        visualizer.intersected = false;
+        visualizer.clickable = false;
+        visualizer.controllingAudio = false;
+        tooltipUI.visible = false;
+      };
+
+      const isPaneOpen = () => Boolean(pane && !pane.hidden);
+
+      const isPointerOverUi = event => {
+        const target = event?.target;
+        if (!(target instanceof Element)) {
+          return false;
+        }
+
+        return Boolean(
+          target.closest('.tp-dfwv')
+          || target.closest('.mage-pane-host')
+          || target.closest('.mage-embedded-presets')
+          || target.closest('.mage-fx-layers-overlay')
+          || target.closest('.mage-fx-studio-overlay')
+          || target.closest('.mage-fx-studio-dock')
+          || target.closest('.mage-scene-camera-dock')
+          || target.closest('.mage-dock-launcher')
+        );
+      };
+
+      const shouldBlockViewportInput = event => isPointerOverUi(event);
+
+      window.addEventListener('wheel', function(event) {
+          if (shouldBlockViewportInput(event)) {
+              clearViewportInteractionState();
+              return;
+          }
+
+          if (!isPointerInViewport(event)) {
+              clearViewportInteractionState();
+              return;
+          }
+
+          if (event.deltaY < 0) {
+              // If the visualizer is clickable and the pointer is currently intersecting it, go to the next shader
+              if (visualizer.clickable && visualizer.intersected) {
+                visualizer.nextShader();
+              }
+          } else if (event.deltaY > 0) {
+              // If the visualizer is clickable and the pointer is currently intersecting it, go to the previous shader
+              if (visualizer.clickable && visualizer.intersected) {
+                visualizer.previousShader();
+              }
+          }
+          // You can also check event.deltaX for horizontal scrolling
+
+          // If you do not want any actual scrolling to occur, you can prevent the default behavior
+          // event.preventDefault(); 
+      }, { passive: false }); // Use passive: false to allow preventDefault()
+
+      window.addEventListener('resize', () => {
+        if (typeof engine.#_syncViewport === 'function') {
+          engine.#_syncViewport(true);
+        }
+        if (typeof engine.#_syncSobelResolution === 'function') {
+          engine.#_syncSobelResolution();
+        }
+        rebuildComposer();
+      });
+
+      window.addEventListener('pointermove', event => {
+        if (shouldBlockViewportInput(event)) {
+          clearViewportInteractionState();
+          // state.currMouse.x = 2;
+          // state.currMouse.y = 2;
+          return;
+        }
+
+        const rect = renderer.domElement.getBoundingClientRect();
+        const relX = (event.clientX - rect.left) / rect.width;
+        const relY = (event.clientY - rect.top) / rect.height;
+
+        const inside = relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1;
+
+        if (!inside) {
+          clearViewportInteractionState();
+          // state.currMouse.x = 2;
+          // state.currMouse.y = 2;
+          return;
+        }
+
+        // Raycast input (NDC)
+        inputs.currMouse.x = relX * 2 - 1;
+        inputs.currMouse.y = -relY * 2 + 1;
+
+        // Animation/audio input source
+        if (visualizer.controllingAudio) {
+          state.currMouse.x = relX * 2 - 1;
+          state.currMouse.y = -relY * 2 + 1;
+        } else {
+          state.currMouse.x = relX / 4 - 1;
+          state.currMouse.y = -relY / 4 + 1;
+        }
+
+        tooltipUI.x = event.clientX;
+        tooltipUI.y = event.clientY;
+        tooltipUI.visible = visualizer.clickable && visualizer.render_tooltips;
+      });
+
+      window.addEventListener('pointerdown', event => {
+        if (shouldBlockViewportInput(event)) {
+          clearViewportInteractionState();
+          state.currPointerDown = 0.0;
+          return;
+        }
+
+        if (!isPointerInViewport(event)) {
+          clearViewportInteractionState();
+          return;
+        }
+
+        state.currPointerDown = 1.0;
+
+        if (!visualizer.clickable || !visualizer.intersected) {
+          return;
+        }
+
+        // stop threejs movement controls while interacting with visualizer
+        //controls.enabled = false;
+        
+        // if (event.button === 1) {
+        //   visualizer.controllingAudio = true;
+        // }
+      });
+
+      window.addEventListener('pointerup', event => {
+        // Always allow right-click toggle on the viewport, even when pane is open.
+        if (event.button === 2) {
+          if (isPointerInViewport(event) && !isPointerOverUi(event)) {
+            setQuickPresetsVisible(false);
+            toggleUI();
+          }
+          clearViewportInteractionState();
+          state.currPointerDown = 0.0;
+          return;
+        }
+
+        if (shouldBlockViewportInput(event)) {
+          clearViewportInteractionState();
+          state.currPointerDown = 0.0;
+          return;
+        }
+
+        if (!isPointerInViewport(event)) {
+          clearViewportInteractionState();
+          return;
+        }
+
+        // stop controlling audio on pointer release
+        visualizer.controllingAudio = false;
+
+        // re-enable threejs movement controls when not interacting with visualizer
+        controls.enabled = true;
+
+        // if (audio && audio.setPlaybackRate) {
+        //   audio.setPlaybackRate(1);
+        // }
+        // if (reversedAudio && reversedAudio.pause) {
+        //   reversedAudio.pause();
+        // }
+
+        // Reset pointer down state with a slight delay to allow for any interactions that check this state on pointer up.
+        state.currPointerDown = 0.0 + 1 * state.pointerDownMultiplier;
+
+        // Only toggle play/pause on middle click release while pointer is intersecting visualizer and it's clickable.
+        // This prevents conflicts with right click (context menu) interactions and ensures that play/pause is only 
+        // toggled when the user is actively interacting with the visualizer.
+        if (!visualizer.intersected || !visualizer.clickable) {
+          return;
+        }
+
+        // if (event.button === 0) {
+        //   if (!audio || !audio.isPlaying) {
+        //     engine.play();
+        //   } else {
+        //     engine.pause();
+        //   }
+        // }
+
+        // Regenerate visualizer on left click release while intersecting visualizer and it's clickable
+        if (event.button === 0) {
+          engine.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false });
+          setQuickPresetsVisible(false);
+        }
+
+        // Open shaders context menu on middle click release while intersecting visualizer and it's clickable 
+        if (event.button === 1) {
+          // if (reversedAudio && reversedAudio.pause) {
+          //   reversedAudio.pause();
+          // }
+          // engine.play();
+
+          // open a selection window showing active shaders
+          // openShaderSelectionWindow(engine.#visualizer);
+        }
+
+      });
+
+      renderer.domElement.addEventListener('pointerleave', () => {
+        clearViewportInteractionState();
+      });
+    };
+
+    // const openShaderSelectionWindow = visualizer => {
+    //   if (!visualizer || !Array.isArray(visualizer.shaders) || visualizer.shaders.length === 0) {
+    //     window.alert('No saved shaders available yet. Load a shader preset first.');
+    //     return;
+    //   }
+
+    //   const existingOverlay = document.getElementById('mage-shader-picker-overlay');
+    //   if (existingOverlay) {
+    //     existingOverlay.remove();
+    //   }
+
+    //   const overlay = document.createElement('div');
+    //   overlay.id = 'mage-shader-picker-overlay';
+    //   Object.assign(overlay.style, {
+    //     position: 'fixed',
+    //     inset: '0',
+    //     zIndex: '10000',
+    //     background: 'rgba(0, 0, 0, 0.55)',
+    //     display: 'flex',
+    //     alignItems: 'center',
+    //     justifyContent: 'center',
+    //     padding: '12px',
+    //   });
+
+    //   const dialog = document.createElement('div');
+    //   Object.assign(dialog.style, {
+    //     width: 'min(640px, 96vw)',
+    //     maxHeight: '80vh',
+    //     overflow: 'auto',
+    //     borderRadius: '10px',
+    //     border: '1px solid rgba(255, 255, 255, 0.2)',
+    //     background: 'rgba(20, 24, 30, 0.95)',
+    //     color: '#fff',
+    //     padding: '14px',
+    //     fontFamily: 'sans-serif',
+    //   });
+
+    //   const title = document.createElement('div');
+    //   title.textContent = 'Select Shader by ID';
+    //   Object.assign(title.style, {
+    //     fontSize: '16px',
+    //     fontWeight: '600',
+    //     marginBottom: '10px',
+    //   });
+
+    //   const selector = document.createElement('select');
+    //   selector.size = Math.min(12, visualizer.shaders.length);
+    //   Object.assign(selector.style, {
+    //     width: '100%',
+    //     minHeight: '180px',
+    //     background: 'rgba(0, 0, 0, 0.35)',
+    //     color: '#fff',
+    //     border: '1px solid rgba(255, 255, 255, 0.25)',
+    //     borderRadius: '8px',
+    //     padding: '6px',
+    //   });
+
+    //   visualizer.shaders.forEach((shaderItem, index) => {
+    //     const option = document.createElement('option');
+    //     option.value = `${shaderItem.id}`;
+    //     const isActive = index === visualizer.shaderIndex;
+    //     option.textContent = `${isActive ? '* ' : ''}${shaderItem.id}`;
+    //     option.selected = isActive;
+    //     selector.appendChild(option);
+    //   });
+
+    //   const actions = document.createElement('div');
+    //   Object.assign(actions.style, {
+    //     display: 'flex',
+    //     justifyContent: 'flex-end',
+    //     gap: '8px',
+    //     marginTop: '12px',
+    //   });
+
+    //   const cancelButton = document.createElement('button');
+    //   cancelButton.type = 'button';
+    //   cancelButton.textContent = 'Cancel';
+    //   Object.assign(cancelButton.style, {
+    //     border: '1px solid rgba(255, 255, 255, 0.2)',
+    //     borderRadius: '6px',
+    //     background: 'transparent',
+    //     color: '#fff',
+    //     padding: '8px 10px',
+    //     cursor: 'pointer',
+    //   });
+
+    //   const applyButton = document.createElement('button');
+    //   applyButton.type = 'button';
+    //   applyButton.textContent = 'Apply';
+    //   Object.assign(applyButton.style, {
+    //     border: '1px solid rgba(255, 255, 255, 0.2)',
+    //     borderRadius: '6px',
+    //     background: '#2f6aff',
+    //     color: '#fff',
+    //     padding: '8px 10px',
+    //     cursor: 'pointer',
+    //   });
+
+    //   const closeDialog = () => {
+    //     overlay.remove();
+    //   };
+
+    //   const applySelectedShader = () => {
+    //     const selectedShaderId = selector.value;
+    //     const selectedIndex = visualizer.shaders.findIndex(
+    //       shaderItem => `${shaderItem.id}` === `${selectedShaderId}`,
+    //     );
+
+    //     if (selectedIndex < 0) {
+    //       return;
+    //     }
+
+    //     const selectedShader = visualizer.shaders[selectedIndex];
+    //     visualizer.shaderIndex = selectedIndex;
+    //     visualizer.load(selectedShader.shader, false);
+    //     closeDialog();
+    //   };
+
+    //   cancelButton.addEventListener('click', closeDialog);
+    //   applyButton.addEventListener('click', applySelectedShader);
+    //   selector.addEventListener('dblclick', applySelectedShader);
+    //   overlay.addEventListener('click', event => {
+    //     if (event.target === overlay) {
+    //       closeDialog();
+    //     }
+    //   });
+    //   document.addEventListener(
+    //     'keydown',
+    //     event => {
+    //       if (event.key === 'Escape' && document.body.contains(overlay)) {
+    //         closeDialog();
+    //       }
+    //     },
+    //     { once: true },
+    //   );
+
+    //   actions.appendChild(cancelButton);
+    //   actions.appendChild(applyButton);
+    //   dialog.appendChild(title);
+    //   dialog.appendChild(selector);
+    //   dialog.appendChild(actions);
+    //   overlay.appendChild(dialog);
+    //   document.body.appendChild(overlay);
+    //   selector.focus();
+    // };
+
+    initTweakpane();
+    eventSetup();
+    if (getOS() !== ('Windows' || 'Mac OS' || 'Linux')) {
+      switchControls();
+    }
+    
+    this.#controlPanel = pane;
+  }
 }
+
+
+

@@ -30,6 +30,7 @@ export default defineConfig({
       formats: ["es"],
     },
     sourcemap: true,
-    minify: false, // easier line-accurate debugging
+    minify: false,
+    outDir: "dist",
   }
 })
