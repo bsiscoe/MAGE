@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+resources/
+scripts/
+mage-1.0.0.tgz
