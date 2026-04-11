@@ -3,8 +3,10 @@ Modular Architecture for Graphics and Effects
 This module serves as the main entry point for the MAGE Engine, providing
 initialization and access to core components like the engine and controls.
 
+First run: npm install mage-1.0.0.tgz
+
 ```javascript
-import { initMAGE } from './mage-engine.mjs';
+import { initMAGE } from 'mage';
 
 Create a MAGE object with the desired configuration options. For example:
 const {engine, controls} = initMAGE({
