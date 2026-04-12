@@ -1,7 +1,8 @@
 node_modules/
-dist/
 .DS_Store
 *.log
+js/
 resources/
 scripts/
 mage-1.0.0.tgz
+patches/
