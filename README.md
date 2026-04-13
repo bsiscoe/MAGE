@@ -7,7 +7,7 @@ MAGE is an AI-powered music visualizer that utilizes heavy randomization of Shad
 ## Installation
 
 ```bash
-npm install mage
+npm install mage-1.0.0.tgz
 ```
 
 ## Quick Start
