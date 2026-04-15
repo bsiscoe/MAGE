@@ -80,6 +80,8 @@ export class MAGEEngine {
   #exportSettingsState = null;
   #importSettingsState = null;
   #refreshSettingsUI = null;
+  #animationFrameId = null;
+  #isDisposed = false;
   #viewportWidth = 0;
   #viewportHeight = 0;
   #viewportToast = {
@@ -172,6 +174,8 @@ export class MAGEEngine {
       fadeMs: 700,
     };
     this.#_pendingSkyboxLoad = null;
+    this.#animationFrameId = null;
+    this.#isDisposed = false;
     // this._previewCaptureQueue = Promise.resolve();
     // this.savedPresets = [];
     // this._presetGalleryWindow = null;
@@ -810,6 +814,11 @@ export class MAGEEngine {
    * @returns {void}
    */
   dispose() {
+    this.#isDisposed = true;
+    if (this.#animationFrameId !== null) {
+      cancelAnimationFrame(this.#animationFrameId);
+      this.#animationFrameId = null;
+    }
     if (this.#renderer) {
       this.#renderer.dispose();
       this.#renderer.forceContextLoss();
@@ -1824,7 +1833,11 @@ export class MAGEEngine {
   }
 
   #_render = () => {
-    requestAnimationFrame(this.#_render);
+    if (this.#isDisposed || !this.#state || !this.#scene || !this.#camera || !this.#renderer) {
+      return;
+    }
+
+    this.#animationFrameId = requestAnimationFrame(this.#_render);
     this.#_syncViewport();
 
     const delta = this.#clock.getDelta();
