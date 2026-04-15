@@ -29,7 +29,7 @@
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createSculptureWithGeometry } from 'shader-park-core';
 import { generateshaderparkcode } from './generateshaderparkcode.js';
-import effects from './effects.js';
+import { MAGEEffects } from './MAGEEffects.js';
 import { reverseAudioBuffer } from './helpers.js';
 import { getEmbeddedSkyboxFaces } from './skyboxes.js';
 import { MAGEVisualizer } from './MAGEVisualizer.js';
@@ -62,6 +62,7 @@ export class MAGEEngine {
   #renderer = null;
   #composer = null;
   #camera = null;
+  #effects = null;
   #controlPanel = null;
   #renderTarget = null;
   #rtScene = null;
@@ -139,6 +140,7 @@ export class MAGEEngine {
     this.#isReversed = false;
 
     this.#visualizer = new MAGEVisualizer(this);
+    this.#effects = new MAGEEffects();
 
     this.#inputs = {
       currMouse: new Vector3(),
@@ -218,7 +220,7 @@ export class MAGEEngine {
 
     if (!this.#scene) {
       this.#_createScene();
-      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera);
+      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera);
       this.#_syncSobelResolution();
     }
 
@@ -503,7 +505,7 @@ export class MAGEEngine {
     this.#canvas = newCanvas;
     this._createRenderer();
     if (this.#scene && this.#camera) {
-      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
       this.#_syncSobelResolution();
     }
   }
@@ -596,7 +598,7 @@ export class MAGEEngine {
     }
 
     if (schema === 'compact') {
-      const compact = this.#_toCompactPreset({ includeState, includeThumbnail, thumbnailDataUrl: preset.thumbnailDataUrl });
+      const compact = this.#_toCompactPreset(includeState);
       // if (trackHistory) {
       //   this._trackSavedPreset(compact);
       // }
@@ -766,7 +768,7 @@ export class MAGEEngine {
       thumbnailEngine.#renderer.setPixelRatio(1);
       thumbnailEngine.#_syncViewport(true);
 
-      thumbnailEngine.#composer = effects.applyPostProcessing(
+      thumbnailEngine.#composer = this.#effects.applyPostProcessing(
         thumbnailEngine.#scene,
         thumbnailEngine.#renderer,
         thumbnailEngine.#camera,
@@ -1029,28 +1031,28 @@ export class MAGEEngine {
       return;
     }
 
-    this.#renderer.toneMapping = effects.toneMapping.method;
+    this.#renderer.toneMapping = this.#effects.toneMapping.method;
 
     if (this.#composer) {
-      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
     }
 
     this.#_syncSobelResolution();
   }
 
   #_syncSobelResolution() {
-    if (!this.#renderer || !effects.sobelShader?.shader?.uniforms?.resolution?.value) {
+    if (!this.#renderer || !this.#effects.sobelShader?.shader?.uniforms?.resolution?.value) {
       return;
     }
 
-    const resolution = effects.sobelShader.shader.uniforms.resolution.value;
+    const resolution = this.#effects.sobelShader.shader.uniforms.resolution.value;
     const bufferWidth = this.#renderer.domElement?.width || Math.max(1, Math.floor(window.innerWidth * window.devicePixelRatio));
     const bufferHeight = this.#renderer.domElement?.height || Math.max(1, Math.floor(window.innerHeight * window.devicePixelRatio));
     resolution.x = bufferWidth;
     resolution.y = bufferHeight;
   }
 
-  #_toCompactPreset({ includeState = false, includeThumbnail = false, thumbnailDataUrl = null } = {}) {
+  #_toCompactPreset(includeState = false) {
     const compact = {
       version: MAGE_VERSION,
       visualizer: {
@@ -1080,45 +1082,45 @@ export class MAGEEngine {
         fov: this.#camera?.fov,
       },
       fx: {
-        passOrder: effects.getPassOrder(),
+        passOrder: this.#effects.getPassOrder(),
         bloom: {
-          enabled: effects.bloom.enabled,
-          strength: effects.bloom.settings.strength,
-          radius: effects.bloom.settings.radius,
-          threshold: effects.bloom.settings.threshold,
+          enabled: this.#effects.bloom.enabled,
+          strength: this.#effects.bloom.settings.strength,
+          radius: this.#effects.bloom.settings.radius,
+          threshold: this.#effects.bloom.settings.threshold,
         },
         toneMapping: {
-          method: effects.toneMapping.method,
+          method: this.#effects.toneMapping.method,
           exposure: this.#renderer?.toneMappingExposure,
         },
         passes: {
-          rgbShift: effects.RGBShift.enabled,
-          dot: effects.dotShader.enabled,
-          technicolor: effects.technicolorShader.enabled,
-          luminosity: effects.luminosityShader.enabled,
-          afterImage: effects.afterImagePass.enabled,
-          sobel: effects.sobelShader.enabled,
-          glitch: effects.glitchPass.enabled,
-          colorify: effects.colorifyShader.enabled,
-          halftone: effects.halftonePass.enabled,
-          gammaCorrection: effects.gammaCorrectionShader.enabled,
-          kaleid: effects.kaleidoShader.enabled,
-          outputPass: effects.outputPass.enabled,
+          rgbShift: this.#effects.RGBShift.enabled,
+          dot: this.#effects.dotShader.enabled,
+          technicolor: this.#effects.technicolorShader.enabled,
+          luminosity: this.#effects.luminosityShader.enabled,
+          afterImage: this.#effects.afterImagePass.enabled,
+          sobel: this.#effects.sobelShader.enabled,
+          glitch: this.#effects.glitchPass.enabled,
+          colorify: this.#effects.colorifyShader.enabled,
+          halftone: this.#effects.halftonePass.enabled,
+          gammaCorrection: this.#effects.gammaCorrectionShader.enabled,
+          kaleid: this.#effects.kaleidoShader.enabled,
+          outputPass: this.#effects.outputPass.enabled,
         },
         params: {
           rgbShift: {
-            amount: effects.RGBShift.shader.uniforms.amount.value,
-            angle: effects.RGBShift.shader.uniforms.angle.value,
+            amount: this.#effects.RGBShift.shader.uniforms.amount.value,
+            angle: this.#effects.RGBShift.shader.uniforms.angle.value,
           },
           afterImage: {
-            damp: effects.afterImagePass.shader.uniforms.damp.value,
+            damp: this.#effects.afterImagePass.shader.uniforms.damp.value,
           },
           colorify: {
-            color: effects.colorifyShader.color,
+            color: this.#effects.colorifyShader.color,
           },
           kaleid: {
-            sides: effects.kaleidoShader.shader.uniforms.sides.value,
-            angle: effects.kaleidoShader.shader.uniforms.angle.value,
+            sides: this.#effects.kaleidoShader.shader.uniforms.sides.value,
+            angle: this.#effects.kaleidoShader.shader.uniforms.angle.value,
           },
         },
       },
@@ -1126,10 +1128,6 @@ export class MAGEEngine {
 
     if (includeState) {
       compact.state = { ...this.#state };
-    }
-
-    if (includeThumbnail && thumbnailDataUrl) {
-      compact.thumbnailDataUrl = thumbnailDataUrl;
     }
 
     return compact;
@@ -1291,19 +1289,19 @@ export class MAGEEngine {
     }
 
     if (Array.isArray(fx.passOrder)) {
-      effects.setPassOrder(fx.passOrder);
+      this.#effects.setPassOrder(fx.passOrder);
     }
 
     if (fx.bloom && typeof fx.bloom === 'object') {
-      if (typeof fx.bloom.enabled === 'boolean') effects.bloom.enabled = fx.bloom.enabled;
-      if (typeof fx.bloom.strength === 'number' && Number.isFinite(fx.bloom.strength)) effects.bloom.settings.strength = fx.bloom.strength;
-      if (typeof fx.bloom.radius === 'number' && Number.isFinite(fx.bloom.radius)) effects.bloom.settings.radius = fx.bloom.radius;
-      if (typeof fx.bloom.threshold === 'number' && Number.isFinite(fx.bloom.threshold)) effects.bloom.settings.threshold = fx.bloom.threshold;
+      if (typeof fx.bloom.enabled === 'boolean') this.#effects.bloom.enabled = fx.bloom.enabled;
+      if (typeof fx.bloom.strength === 'number' && Number.isFinite(fx.bloom.strength)) this.#effects.bloom.settings.strength = fx.bloom.strength;
+      if (typeof fx.bloom.radius === 'number' && Number.isFinite(fx.bloom.radius)) this.#effects.bloom.settings.radius = fx.bloom.radius;
+      if (typeof fx.bloom.threshold === 'number' && Number.isFinite(fx.bloom.threshold)) this.#effects.bloom.settings.threshold = fx.bloom.threshold;
     }
 
     if (fx.toneMapping && typeof fx.toneMapping === 'object') {
       if (typeof fx.toneMapping.method === 'number' && Number.isFinite(fx.toneMapping.method)) {
-        effects.toneMapping.method = fx.toneMapping.method;
+        this.#effects.toneMapping.method = fx.toneMapping.method;
         if (this.#renderer) {
           this.#renderer.toneMapping = fx.toneMapping.method;
         }
@@ -1314,50 +1312,50 @@ export class MAGEEngine {
     }
 
     if (fx.passes && typeof fx.passes === 'object') {
-      if (typeof fx.passes.rgbShift === 'boolean') effects.RGBShift.enabled = fx.passes.rgbShift;
-      if (typeof fx.passes.dot === 'boolean') effects.dotShader.enabled = fx.passes.dot;
-      if (typeof fx.passes.technicolor === 'boolean') effects.technicolorShader.enabled = fx.passes.technicolor;
-      if (typeof fx.passes.luminosity === 'boolean') effects.luminosityShader.enabled = fx.passes.luminosity;
-      if (typeof fx.passes.afterImage === 'boolean') effects.afterImagePass.enabled = fx.passes.afterImage;
-      if (typeof fx.passes.sobel === 'boolean') effects.sobelShader.enabled = fx.passes.sobel;
-      if (typeof fx.passes.glitch === 'boolean') effects.glitchPass.enabled = fx.passes.glitch;
-      if (typeof fx.passes.colorify === 'boolean') effects.colorifyShader.enabled = fx.passes.colorify;
-      if (typeof fx.passes.halftone === 'boolean') effects.halftonePass.enabled = fx.passes.halftone;
-      if (typeof fx.passes.gammaCorrection === 'boolean') effects.gammaCorrectionShader.enabled = fx.passes.gammaCorrection;
-      if (typeof fx.passes.kaleid === 'boolean') effects.kaleidoShader.enabled = fx.passes.kaleid;
-      if (typeof fx.passes.outputPass === 'boolean') effects.outputPass.enabled = fx.passes.outputPass;
+      if (typeof fx.passes.rgbShift === 'boolean') this.#effects.RGBShift.enabled = fx.passes.rgbShift;
+      if (typeof fx.passes.dot === 'boolean') this.#effects.dotShader.enabled = fx.passes.dot;
+      if (typeof fx.passes.technicolor === 'boolean') this.#effects.technicolorShader.enabled = fx.passes.technicolor;
+      if (typeof fx.passes.luminosity === 'boolean') this.#effects.luminosityShader.enabled = fx.passes.luminosity;
+      if (typeof fx.passes.afterImage === 'boolean') this.#effects.afterImagePass.enabled = fx.passes.afterImage;
+      if (typeof fx.passes.sobel === 'boolean') this.#effects.sobelShader.enabled = fx.passes.sobel;
+      if (typeof fx.passes.glitch === 'boolean') this.#effects.glitchPass.enabled = fx.passes.glitch;
+      if (typeof fx.passes.colorify === 'boolean') this.#effects.colorifyShader.enabled = fx.passes.colorify;
+      if (typeof fx.passes.halftone === 'boolean') this.#effects.halftonePass.enabled = fx.passes.halftone;
+      if (typeof fx.passes.gammaCorrection === 'boolean') this.#effects.gammaCorrectionShader.enabled = fx.passes.gammaCorrection;
+      if (typeof fx.passes.kaleid === 'boolean') this.#effects.kaleidoShader.enabled = fx.passes.kaleid;
+      if (typeof fx.passes.outputPass === 'boolean') this.#effects.outputPass.enabled = fx.passes.outputPass;
     }
 
     if (fx.params && typeof fx.params === 'object') {
       if (fx.params.rgbShift && typeof fx.params.rgbShift === 'object') {
         if (typeof fx.params.rgbShift.amount === 'number' && Number.isFinite(fx.params.rgbShift.amount)) {
-          effects.RGBShift.shader.uniforms.amount.value = fx.params.rgbShift.amount;
+          this.#effects.RGBShift.shader.uniforms.amount.value = fx.params.rgbShift.amount;
         }
         if (typeof fx.params.rgbShift.angle === 'number' && Number.isFinite(fx.params.rgbShift.angle)) {
-          effects.RGBShift.shader.uniforms.angle.value = fx.params.rgbShift.angle;
+          this.#effects.RGBShift.shader.uniforms.angle.value = fx.params.rgbShift.angle;
         }
       }
 
       if (fx.params.afterImage && typeof fx.params.afterImage === 'object') {
         if (typeof fx.params.afterImage.damp === 'number' && Number.isFinite(fx.params.afterImage.damp)) {
-          effects.afterImagePass.shader.uniforms.damp.value = fx.params.afterImage.damp;
+          this.#effects.afterImagePass.shader.uniforms.damp.value = fx.params.afterImage.damp;
         }
       }
 
       if (fx.params.kaleid && typeof fx.params.kaleid === 'object') {
         if (typeof fx.params.kaleid.sides === 'number' && Number.isFinite(fx.params.kaleid.sides)) {
-          effects.kaleidoShader.shader.uniforms.sides.value = fx.params.kaleid.sides;
+          this.#effects.kaleidoShader.shader.uniforms.sides.value = fx.params.kaleid.sides;
         }
         if (typeof fx.params.kaleid.angle === 'number' && Number.isFinite(fx.params.kaleid.angle)) {
-          effects.kaleidoShader.shader.uniforms.angle.value = fx.params.kaleid.angle;
+          this.#effects.kaleidoShader.shader.uniforms.angle.value = fx.params.kaleid.angle;
         }
       }
 
       if (fx.params.colorify && typeof fx.params.colorify === 'object' && fx.params.colorify.color !== undefined) {
         const colorValue = fx.params.colorify.color;
-        if (effects.colorifyShader.color && typeof effects.colorifyShader.color.set === 'function') {
+        if (this.#effects.colorifyShader.color && typeof this.#effects.colorifyShader.color.set === 'function') {
           try {
-            effects.colorifyShader.color.set(colorValue);
+            this.#effects.colorifyShader.color.set(colorValue);
           } catch {
             // Keep current color if payload is not parseable by three.Color.
           }
@@ -1366,7 +1364,7 @@ export class MAGEEngine {
     }
 
     if (this.#composer) {
-      this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
     }
   }
 
@@ -1731,7 +1729,7 @@ export class MAGEEngine {
     this.#renderer.setPixelRatio(window.devicePixelRatio);
     this.#renderer.setClearColor(new Color(1, 1, 1), 0);
     // Match original renderer tone mapping exposure behavior
-    this.#renderer.toneMappingExposure = effects.toneMapping.exposure;
+    this.#renderer.toneMappingExposure = this.#effects.toneMapping.exposure;
     this.#renderer.outputColorSpace = SRGBColorSpace;
 
     if (!this.#canvas) {
@@ -1927,7 +1925,7 @@ export class MAGEEngine {
     //   document.title = 'MAGE';
     // }
 
-    // use easing and linear interpolation to smoothly animate mouse effects
+    // use easing and linear interpolation to smoothly animate mouse this.#effects
     this.#state.pointerDown = 0.1 * this.#state.currPointerDown + 0.9 * this.#state.pointerDown;
     this.#state.mouse.lerp(this.#state.currMouse, 0.05);
 
@@ -2163,7 +2161,7 @@ export class MAGEEngine {
     const useIntegratedControls = Boolean(engine.#controlSettings.integrated);
 
     const rebuildComposer = () => {
-      composer = effects.applyPostProcessing(scene, renderer, camera, composer);
+      composer = this.#effects.applyPostProcessing(scene, renderer, camera, composer);
       engine.#composer = composer;
     };
 
@@ -2236,35 +2234,35 @@ export class MAGEEngine {
       }
 
       // FX toggles + all adjustable FX parameters
-      effects.bloom.enabled = randBool(0.55);
-      effects.bloom.settings.strength = randRange(0.0, 10.0);
-      effects.bloom.settings.radius = randRange(-10.0, 10.0);
-      effects.bloom.settings.threshold = randRange(0.0, 10.0);
+      this.#effects.bloom.enabled = randBool(0.55);
+      this.#effects.bloom.settings.strength = randRange(0.0, 10.0);
+      this.#effects.bloom.settings.radius = randRange(-10.0, 10.0);
+      this.#effects.bloom.settings.threshold = randRange(0.0, 10.0);
 
-      effects.RGBShift.enabled = randBool(0.4);
-      effects.RGBShift.shader.uniforms.amount.value = randRange(0.0, 0.1);
-      effects.RGBShift.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
+      this.#effects.RGBShift.enabled = randBool(0.4);
+      this.#effects.RGBShift.shader.uniforms.amount.value = randRange(0.0, 0.1);
+      this.#effects.RGBShift.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
 
-      effects.afterImagePass.enabled = randBool(0.35);
-      effects.afterImagePass.shader.uniforms.damp.value = randRange(0.0, 1.0);
+      this.#effects.afterImagePass.enabled = randBool(0.35);
+      this.#effects.afterImagePass.shader.uniforms.damp.value = randRange(0.0, 1.0);
 
-      effects.colorifyShader.enabled = randBool(0.35);
-      effects.colorifyShader.color.setHSL(Math.random(), randRange(0.2, 1.0), randRange(0.2, 0.8));
+      this.#effects.colorifyShader.enabled = randBool(0.35);
+      this.#effects.colorifyShader.color.setHSL(Math.random(), randRange(0.2, 1.0), randRange(0.2, 0.8));
 
-      effects.kaleidoShader.enabled = randBool(0.3);
-      effects.kaleidoShader.shader.uniforms.sides.value = randInt(1, 24);
-      effects.kaleidoShader.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
+      this.#effects.kaleidoShader.enabled = randBool(0.3);
+      this.#effects.kaleidoShader.shader.uniforms.sides.value = randInt(1, 24);
+      this.#effects.kaleidoShader.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
 
-      effects.glitchPass.enabled = randBool(0.25);
-      effects.dotShader.enabled = randBool(0.25);
-      effects.technicolorShader.enabled = randBool(0.25);
-      effects.luminosityShader.enabled = randBool(0.25);
-      effects.sobelShader.enabled = randBool(0.25);
-      effects.halftonePass.enabled = randBool(0.25);
-      effects.gammaCorrectionShader.enabled = randBool(0.25);
-      effects.copyShader.enabled = randBool(0.2);
-      effects.bleachBypassShader.enabled = randBool(0.2);
-      effects.toonShader.enabled = randBool(0.2);
+      this.#effects.glitchPass.enabled = randBool(0.25);
+      this.#effects.dotShader.enabled = randBool(0.25);
+      this.#effects.technicolorShader.enabled = randBool(0.25);
+      this.#effects.luminosityShader.enabled = randBool(0.25);
+      this.#effects.sobelShader.enabled = randBool(0.25);
+      this.#effects.halftonePass.enabled = randBool(0.25);
+      this.#effects.gammaCorrectionShader.enabled = randBool(0.25);
+      this.#effects.copyShader.enabled = randBool(0.2);
+      this.#effects.bleachBypassShader.enabled = randBool(0.2);
+      this.#effects.toonShader.enabled = randBool(0.2);
 
       const toneMappingMethods = [
         LinearToneMapping,
@@ -2275,17 +2273,17 @@ export class MAGEEngine {
         AgXToneMapping,
         NeutralToneMapping,
       ];
-      effects.toneMapping.method = toneMappingMethods[randInt(0, toneMappingMethods.length - 1)];
-      renderer.toneMapping = effects.toneMapping.method;
+      this.#effects.toneMapping.method = toneMappingMethods[randInt(0, toneMappingMethods.length - 1)];
+      renderer.toneMapping = this.#effects.toneMapping.method;
       renderer.toneMappingExposure = randRange(-500.0, 500.0);
 
-      const currentOrder = effects.getPassOrder();
+      const currentOrder = this.#effects.getPassOrder();
       const shuffled = currentOrder.filter(passId => passId !== 'outputPass');
       for (let i = shuffled.length - 1; i > 0; i -= 1) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
-      effects.setPassOrder([...shuffled, 'outputPass']);
+      this.#effects.setPassOrder([...shuffled, 'outputPass']);
 
       controls.update();
       if (pane) {
@@ -2337,13 +2335,13 @@ export class MAGEEngine {
       };
 
       const syncSobelResolution = () => {
-        if (!effects.sobelShader?.shader?.uniforms?.resolution?.value) {
+        if (!this.#effects.sobelShader?.shader?.uniforms?.resolution?.value) {
           return;
         }
         const bufferWidth = renderer.domElement.width || window.innerWidth * window.devicePixelRatio;
         const bufferHeight = renderer.domElement.height || window.innerHeight * window.devicePixelRatio;
-        effects.sobelShader.shader.uniforms.resolution.value.x = bufferWidth;
-        effects.sobelShader.shader.uniforms.resolution.value.y = bufferHeight;
+        this.#effects.sobelShader.shader.uniforms.resolution.value.x = bufferWidth;
+        this.#effects.sobelShader.shader.uniforms.resolution.value.y = bufferHeight;
       };
 
       const overlay = document.createElement('div');
@@ -2573,10 +2571,10 @@ export class MAGEEngine {
           select.appendChild(el);
         });
 
-        select.value = `${effects.toneMapping.method}`;
+        select.value = `${this.#effects.toneMapping.method}`;
         select.addEventListener('change', () => {
-          effects.toneMapping.method = Number.parseFloat(select.value);
-          renderer.toneMapping = effects.toneMapping.method;
+          this.#effects.toneMapping.method = Number.parseFloat(select.value);
+          renderer.toneMapping = this.#effects.toneMapping.method;
           rebuildComposer();
         });
 
@@ -2589,60 +2587,60 @@ export class MAGEEngine {
         if (passId === 'bloom') {
           addRangeControl(parent, {
             label: 'Strength', min: 0, max: 10, step: 0.001,
-            getValue: () => effects.bloom.settings.strength,
-            setValue: value => { effects.bloom.settings.strength = value; },
+            getValue: () => this.#effects.bloom.settings.strength,
+            setValue: value => { this.#effects.bloom.settings.strength = value; },
           });
           addRangeControl(parent, {
             label: 'Radius', min: -10, max: 10, step: 0.001,
-            getValue: () => effects.bloom.settings.radius,
-            setValue: value => { effects.bloom.settings.radius = value; },
+            getValue: () => this.#effects.bloom.settings.radius,
+            setValue: value => { this.#effects.bloom.settings.radius = value; },
           });
           addRangeControl(parent, {
             label: 'Threshold', min: 0, max: 10, step: 0.001,
-            getValue: () => effects.bloom.settings.threshold,
-            setValue: value => { effects.bloom.settings.threshold = value; },
+            getValue: () => this.#effects.bloom.settings.threshold,
+            setValue: value => { this.#effects.bloom.settings.threshold = value; },
           });
         }
 
         if (passId === 'RGBShift') {
           addRangeControl(parent, {
             label: 'Amount', min: 0, max: 0.1, step: 0.0001,
-            getValue: () => effects.RGBShift.shader.uniforms.amount.value,
-            setValue: value => { effects.RGBShift.shader.uniforms.amount.value = value; },
+            getValue: () => this.#effects.RGBShift.shader.uniforms.amount.value,
+            setValue: value => { this.#effects.RGBShift.shader.uniforms.amount.value = value; },
           });
           addRangeControl(parent, {
             label: 'Angle', min: 0, max: Math.PI * 2, step: 0.001,
-            getValue: () => effects.RGBShift.shader.uniforms.angle.value,
-            setValue: value => { effects.RGBShift.shader.uniforms.angle.value = value; },
+            getValue: () => this.#effects.RGBShift.shader.uniforms.angle.value,
+            setValue: value => { this.#effects.RGBShift.shader.uniforms.angle.value = value; },
           });
         }
 
         if (passId === 'afterImagePass') {
           addRangeControl(parent, {
             label: 'Damp', min: 0, max: 1, step: 0.001,
-            getValue: () => effects.afterImagePass.shader.uniforms.damp.value,
-            setValue: value => { effects.afterImagePass.shader.uniforms.damp.value = value; },
+            getValue: () => this.#effects.afterImagePass.shader.uniforms.damp.value,
+            setValue: value => { this.#effects.afterImagePass.shader.uniforms.damp.value = value; },
           });
         }
 
         if (passId === 'colorifyShader') {
           addColorControl(parent, {
             label: 'Hue',
-            getValue: () => `#${effects.colorifyShader.color.getHexString()}`,
-            setValue: value => { effects.colorifyShader.color.set(value); },
+            getValue: () => `#${this.#effects.colorifyShader.color.getHexString()}`,
+            setValue: value => { this.#effects.colorifyShader.color.set(value); },
           });
         }
 
         if (passId === 'kaleidoShader') {
           addRangeControl(parent, {
             label: 'Sides', min: 1, max: 24, step: 1,
-            getValue: () => effects.kaleidoShader.shader.uniforms.sides.value,
-            setValue: value => { effects.kaleidoShader.shader.uniforms.sides.value = Math.max(1, Math.round(value)); },
+            getValue: () => this.#effects.kaleidoShader.shader.uniforms.sides.value,
+            setValue: value => { this.#effects.kaleidoShader.shader.uniforms.sides.value = Math.max(1, Math.round(value)); },
           });
           addRangeControl(parent, {
             label: 'Angle', min: 0, max: Math.PI * 2, step: 0.001,
-            getValue: () => effects.kaleidoShader.shader.uniforms.angle.value,
-            setValue: value => { effects.kaleidoShader.shader.uniforms.angle.value = value; },
+            getValue: () => this.#effects.kaleidoShader.shader.uniforms.angle.value,
+            setValue: value => { this.#effects.kaleidoShader.shader.uniforms.angle.value = value; },
           });
         }
 
@@ -2658,7 +2656,7 @@ export class MAGEEngine {
 
       const renderStack = () => {
         stackList.innerHTML = '';
-        const orderedLayers = effects.getPassOrder();
+        const orderedLayers = this.#effects.getPassOrder();
 
         orderedLayers.forEach((passId, index) => {
           const row = document.createElement('div');
@@ -2697,12 +2695,12 @@ export class MAGEEngine {
 
           const toggle = document.createElement('input');
           toggle.type = 'checkbox';
-          toggle.checked = Boolean(effects[passId]?.enabled);
+          toggle.checked = Boolean(this.#effects[passId]?.enabled);
           toggle.addEventListener('change', () => {
-            if (!effects[passId]) {
+            if (!this.#effects[passId]) {
               return;
             }
-            effects[passId].enabled = toggle.checked;
+            this.#effects[passId].enabled = toggle.checked;
             if (passId === 'sobelShader') {
               syncSobelResolution();
             }
@@ -2795,7 +2793,7 @@ export class MAGEEngine {
             }
             event.preventDefault();
 
-            const currentOrder = effects.getPassOrder();
+            const currentOrder = this.#effects.getPassOrder();
             const movable = currentOrder.filter(id => id !== 'outputPass');
             const from = movable.indexOf(draggedLayerId);
             if (from < 0) {
@@ -2813,7 +2811,7 @@ export class MAGEEngine {
 
             const [moved] = movable.splice(from, 1);
             movable.splice(to, 0, moved);
-            effects.setPassOrder([...movable, 'outputPass']);
+            this.#effects.setPassOrder([...movable, 'outputPass']);
             rebuildComposer();
             renderStack();
           });
@@ -3480,7 +3478,7 @@ export class MAGEEngine {
           pane.importState(state);
           pane.refresh();
 
-          renderer.toneMapping = effects.toneMapping.method;
+          renderer.toneMapping = this.#effects.toneMapping.method;
           if (typeof engine.#_syncSobelResolution === 'function') {
             engine.#_syncSobelResolution();
           }

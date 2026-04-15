@@ -129,126 +129,124 @@ const DEFAULT_PASS_ORDER = [
 ];
 
 // threejs effects list
-/** @type {any} */
-const effects = {
-  passOrder : [...DEFAULT_PASS_ORDER],
-  toneMapping : {
-        exposure : 1.5,
-        method : 0, // Default
-  },
-  sobelShader : {
-      shader : new ShaderPass(SobelOperatorShader),
-      enabled : false,
-  },
-  halftonePass : {
-    shader : new HalftonePass(),
-    enabled : false, 
-  },
-  luminosityShader : {
-    shader : new ShaderPass(LuminosityShader),
-    enabled : false,
-  },
-  gammaCorrectionShader : {
-    shader : new ShaderPass(GammaCorrectionShader),
-    enabled : false,
-  },
-  dotShader : {
-    shader : new ShaderPass(DotScreenShader),
-    scale : 4.0,
-    enabled : false,
-  },
-  colorifyShader : {
-    shader : new ShaderPass(ColorifyShader),
-    enabled : false,
-    color : new Color(),
-    update : function() {
-      this.shader.uniforms.color.value = this.color;
-    },
-  },
-  technicolorShader : {
-    shader : new ShaderPass(TechnicolorShader),
-    enabled : false,
-  },
-  toonShader : {
-    shader : new ShaderPass(ToonShader1),
-    enabled : false,
-    toonShaderChoice : 0,
-    update : function() {
-      this.shader = new ShaderPass(this.toonShaderChoice)
-    },
-  },
-  copyShader : {
-    shader : new ShaderPass(CopyShader),
-    enabled : false,
-  },
-  bleachBypassShader : {
-    shader : new ShaderPass(BleachBypassShader),
-    enabled : false,
-  },
-  RGBShift : {
-    shader : new ShaderPass(RGBShiftShader),
-    enabled : false,
-  },
-  bloom : {
-    settings : {
-        strength : 1.0,
-        radius : 0.2,
-        threshold : 0.1,
-    },
-    shader : new UnrealBloomPass(
-      new Vector2(window.innerWidth, window.innerHeight),
-      1.6,
-      0.2,
-      0.2,
-    ),
-    
-    enabled : false,
-    
-    update : function(renderer) {
-      const resolution = new Vector2(window.innerWidth, window.innerHeight);
-      if (renderer && renderer.getDrawingBufferSize) {
-        renderer.getDrawingBufferSize(resolution);
-      }
+export class MAGEEffects {
+  constructor() {
+    this.passOrder = [...DEFAULT_PASS_ORDER];
+    this.toneMapping = {
+      exposure: 1.5,
+      method: 0,
+    };
+    this.sobelShader = {
+      shader: new ShaderPass(SobelOperatorShader),
+      enabled: false,
+    };
+    this.halftonePass = {
+      shader: new HalftonePass(),
+      enabled: false,
+    };
+    this.luminosityShader = {
+      shader: new ShaderPass(LuminosityShader),
+      enabled: false,
+    };
+    this.gammaCorrectionShader = {
+      shader: new ShaderPass(GammaCorrectionShader),
+      enabled: false,
+    };
+    this.dotShader = {
+      shader: new ShaderPass(DotScreenShader),
+      scale: 4.0,
+      enabled: false,
+    };
+    /** @type {any} */
+    this.colorifyShader = {
+      shader: new ShaderPass(ColorifyShader),
+      enabled: false,
+      color: new Color(),
+      update: function() {
+        this.shader.uniforms.color.value = this.color;
+      },
+    };
+    this.technicolorShader = {
+      shader: new ShaderPass(TechnicolorShader),
+      enabled: false,
+    };
+    /** @type {any} */
+    this.toonShader = {
+      shader: new ShaderPass(ToonShader1),
+      enabled: false,
+      toonShaderChoice: 0,
+      update: function() {
+        this.shader = new ShaderPass(this.toonShaderChoice);
+      },
+    };
+    this.copyShader = {
+      shader: new ShaderPass(CopyShader),
+      enabled: false,
+    };
+    this.bleachBypassShader = {
+      shader: new ShaderPass(BleachBypassShader),
+      enabled: false,
+    };
+    this.RGBShift = {
+      shader: new ShaderPass(RGBShiftShader),
+      enabled: false,
+    };
+    /** @type {any} */
+    this.bloom = {
+      settings: {
+        strength: 1.0,
+        radius: 0.2,
+        threshold: 0.1,
+      },
+      shader: new UnrealBloomPass(
+        new Vector2(window.innerWidth, window.innerHeight),
+        1.6,
+        0.2,
+        0.2,
+      ),
+      enabled: false,
+      update: function(renderer) {
+        const resolution = new Vector2(window.innerWidth, window.innerHeight);
+        if (renderer && renderer.getDrawingBufferSize) {
+          renderer.getDrawingBufferSize(resolution);
+        }
 
-      this.shader?.dispose(); // CALL DISPOSE TO PREVENT MEM LEAKS
-      this.shader = new UnrealBloomPass(
-        resolution,
-        this.settings.strength,
-        this.settings.radius,
-        this.settings.threshold
-      );
-    },
-  },
-  afterImagePass : {
-    shader : new AfterimagePass(),
-    enabled : false,
-  },
-  kaleidoShader : {
-    shader : new ShaderPass(KaleidoShader),
-    enabled : false,
-  },
-  glitchPass : {
-    shader : new GlitchPass(64),
-    enabled : false,
-  },
-  // outlinePass : {
-  //   shader : null,
-  //   enabled : false,
-  //   init : function(resolution, scene, camera, selectedObjects) {
-  //     this.shader = new OutlinePass();
-  //   }
-  // },
-  outputPass : {
-    shader : new OutputPass(),
-    enabled : true,
-  },
-  getPassOrder : function() {
+        this.shader?.dispose();
+        this.shader = new UnrealBloomPass(
+          resolution,
+          this.settings.strength,
+          this.settings.radius,
+          this.settings.threshold,
+        );
+      },
+    };
+    this.afterImagePass = {
+      shader: new AfterimagePass(),
+      enabled: false,
+    };
+    this.kaleidoShader = {
+      shader: new ShaderPass(KaleidoShader),
+      enabled: false,
+    };
+    this.glitchPass = {
+      shader: new GlitchPass(64),
+      enabled: false,
+    };
+    this.outputPass = {
+      shader: new OutputPass(),
+      enabled: true,
+    };
+  }
+
+  getPassOrder() {
     return [...this.passOrder];
-  },
-  getDefaultPassOrder : function() {
+  }
+
+  getDefaultPassOrder() {
     return [...DEFAULT_PASS_ORDER];
-  },
-  setPassOrder : function(nextOrder) {
+  }
+
+  setPassOrder(nextOrder) {
     if (!Array.isArray(nextOrder)) {
       return false;
     }
@@ -281,8 +279,9 @@ const effects = {
     this.passOrder = deduped.filter(passId => passId !== 'outputPass');
     this.passOrder.push('outputPass');
     return true;
-  },
-  movePass : function(passId, direction) {
+  }
+
+  movePass(passId, direction) {
     if (!passId || typeof passId !== 'string') {
       return false;
     }
@@ -312,17 +311,15 @@ const effects = {
     [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
     this.setPassOrder(order);
     return true;
-  },
-  applyPostProcessing : function(scene, renderer, camera, composer) {
-    
-    // CALL DISPOSE TO PREVENT MEM LEAKS
-    this.bloom.update(renderer); 
+  }
+
+  applyPostProcessing(scene, renderer, camera, composer) {
+    this.bloom.update(renderer);
     this.toonShader.update();
     this.colorifyShader.update();
 
-    // clean slate
     composer?.dispose();
-    let newComposer = new EffectComposer(renderer);
+    const newComposer = new EffectComposer(renderer);
     newComposer.addPass(new RenderPass(scene, camera));
 
     const orderedPassIds = this.getPassOrder();
@@ -338,5 +335,7 @@ const effects = {
     return newComposer;
   }
 }
+
+const effects = new MAGEEffects();
 
 export default effects;
