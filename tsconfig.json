@@ -10,6 +10,6 @@
     "target": "ESNext",
     "skipLibCheck": true
   },
-  "include": ["./js/mage-lib.js", "./js/MAGEEngine.js"],
+  "include": ["./js/mage-lib.js"],
   "exclude": ["node_modules", "dist", "scripts", "src"]
 }

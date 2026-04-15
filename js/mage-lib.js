@@ -29,10 +29,16 @@ engine.toPreset() -> returns the current preset as a MAGEPreset instance
 import { MAGEEngine } from './MAGEEngine.js';
 
 /**
+ * @typedef {Object} EngineControlSettings
+ * @property {boolean} active - Whether to create controls for the engine
+ * @property {boolean} integrated - Whether controls are integrated into the viewport (true) or separate (false)
+ */
+
+/**
  * @typedef {Object} MAGEOptions
- * @property {HTMLCanvasElement} [canvas] - The canvas element to render into (required)
+ * @property {HTMLCanvasElement} [canvas] - The canvas element to render into
  * @property {boolean} [log=false] - Enable debug logging
- * @property {boolean} [withControls=true] - Enable camera controls
+ * @property {EngineControlSettings} [withControls={ active: true, integrated: false }] - Enable scene controls and specify their layout
  * @property {boolean} [autoStart=false] - Automatically start rendering
  */
 
@@ -41,16 +47,9 @@ import { MAGEEngine } from './MAGEEngine.js';
  * @param {MAGEOptions} options
  * @returns {MAGEEngine}
  */
-export function initMAGE(options = {}) {
+export function initMAGE({ canvas, log = false, withControls = { active: true, integrated: false }, autoStart = false } = {}) {
   // Initialize the MAGE Engine with the provided canvas and configuration options.
-  const engine = new MAGEEngine(options);
-
-  if (options.autoStart || options.withControls) {
-      engine.start();
-    }
-  if (options.withControls) {
-      engine.initControls();
-    }
+  const engine = new MAGEEngine({ canvas, log, withControls, autoStart });
 
   // Return the initialized engine and controls (if created) for external use.
   return engine;

@@ -204,7 +204,7 @@ textarea {
   <input type="file" id="file" style="display:none;" />
 
   <script type="module">
-    import { initMAGE } from "./dist/mage-engine.js";
+    import { initMAGE } from "./js/mage-lib.js";
     window.addEventListener('load', () => {
         const logEl = document.getElementById('log');
         const log = message => {
@@ -241,8 +241,8 @@ textarea {
         const engine = initMAGE({
           canvas,
           log: true,
-          autoStart: true,
-          withControls: true,
+          autoStart: false,
+          withControls: { active: false, integrated: true },
         });
 
         document.getElementById('btnStart').addEventListener('click', () => {

@@ -42,10 +42,18 @@ const controlTipsImageDataUrl = new URL('../resources/controltips.png', import.m
 
 const MAGE_VERSION = '1.1.0';
 
-/** 
+/**
+ * @typedef {Object} EngineControlSettings
+ * @property {boolean} active - Whether to create controls for the engine
+ * @property {boolean} integrated - Whether controls are integrated into the viewport (true) or separate (false)
+ */
+
+/**
  * @typedef {Object} MAGEOptions
- * @property {HTMLCanvasElement} canvas - The canvas element to render into
+ * @property {HTMLCanvasElement} [canvas] - The canvas element to render into
  * @property {boolean} [log=false] - Enable debug logging
+ * @property {EngineControlSettings} [withControls={ active: true, integrated: false }] - Enable scene controls and specify their layout
+ * @property {boolean} [autoStart=false] - Automatically start rendering
  */
 
 export class MAGEEngine {
@@ -82,6 +90,8 @@ export class MAGEEngine {
   #refreshSettingsUI = null;
   #animationFrameId = null;
   #isDisposed = false;
+  #isRunning = false;
+  #controlSettings = false;
   #viewportWidth = 0;
   #viewportHeight = 0;
   #viewportToast = {
@@ -92,7 +102,7 @@ export class MAGEEngine {
     fadeMs: 700,
   };
   #_pendingSkyboxLoad = null;
-  constructor({ canvas, log = false } = {}) {
+  constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {} } = {}) {
     // console log version
     if (log) {
       console.log(`Initializing MAGE Engine v${MAGE_VERSION}...`);
@@ -101,7 +111,10 @@ export class MAGEEngine {
     // Optional HTMLCanvasElement to render into. If not provided, a canvas
     // will be created and appended to document.body, matching current behavior.
     this.#canvas = canvas || null;
-
+    this.#controlSettings = {
+      active: Boolean(active),
+      integrated: Boolean(integrated)
+    };
     this.#controlPanel = null;
 
     // Core Three.js objects
@@ -176,6 +189,15 @@ export class MAGEEngine {
     this.#_pendingSkyboxLoad = null;
     this.#animationFrameId = null;
     this.#isDisposed = false;
+    this.#isRunning = false;
+
+    if (this.#controlSettings.active) {
+      this.start();
+      this.initControls();
+    } else if (autoStart) {
+      this.start();
+    }
+
     // this._previewCaptureQueue = Promise.resolve();
     // this.savedPresets = [];
     // this._presetGalleryWindow = null;
@@ -185,6 +207,15 @@ export class MAGEEngine {
    * @return {void}
    */
   start() {
+    if (this.#isRunning) {
+      return;
+    }
+    if (this.#isDisposed) {
+      console.warn('Attempted to start MAGEEngine after it was disposed. This instance cannot be restarted.');
+      return;
+    }
+    this.#isRunning = true;
+
     if (!this.#scene) {
       this.#_createScene();
       this.#composer = effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera);
@@ -449,6 +480,12 @@ export class MAGEEngine {
       this.#onPresetLoaded(preset);
     }
 
+    if (this.#controlSettings.active) {
+      this.#controls.enabled = true;
+    } else {
+      this.#controls.enabled = false;
+    }
+
     return preset;
   }
 
@@ -617,6 +654,8 @@ export class MAGEEngine {
    * @property {number} [settleFrames = 2] - Number of frames to render after loading preset before capturing thumbnail, to allow for any async loading and shader stabilization (default: 2)
    */
 
+
+
   async #_captureFramePreviewBlob({
     width = 224,
     height = 224,
@@ -650,8 +689,13 @@ export class MAGEEngine {
    * @param {CaptureFramePreviewOptions} options 
    * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
    */
-  async captureFramePreview(options = {}) {
-    const blob = await this.#_captureFramePreviewBlob(options);
+  async captureFramePreview({
+    width = 224,
+    height = 224,
+    type = 'image/png',
+    quality = 0.84,
+  } = {}) {
+    const blob = await this.#_captureFramePreviewBlob({ width, height, type, quality });
     if (!blob) {
       return null;
     }
@@ -662,7 +706,7 @@ export class MAGEEngine {
    * Captures a thumbnail for the given preset. Prefer using current engine state and captureFramePreview when possible, but this method can be used to capture a thumbnail 
    * for any preset without affecting the current engine state.
    * @param {MAGEPreset} presetInput 
-   * @param {CaptureFramePreviewOptions} options 
+   * @param {CaptureThumbnailOptions} options 
    * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
    */
   async captureThumbnail(
@@ -671,19 +715,23 @@ export class MAGEEngine {
       width = 224,
       height = 224,
       settleFrames = 2,
+      quality = 0.84,
+      type = 'image/png',
     } = {},
   ) {
     return await MAGEEngine.captureThumbnail(presetInput, {
       width,
       height,
       settleFrames,
+      quality,
+      type,
     });
   }
 
   /**
    * Captures a thumbnail for a given preset without requiring an instance of MAGEEngine.
    * @param {MAGEPreset} presetInput 
-   * @param {CaptureFramePreviewOptions} [options] 
+   * @param {CaptureThumbnailOptions} [options] 
    * @returns {Promise<string|null>} A data URL representing the captured thumbnail, or null if the capture failed.
     * @description This static method captures a thumbnail for a given preset without requiring an instance of MAGEEngine. 
     * It creates a temporary offscreen canvas and a new MAGEEngine instance to load the preset, render it for a few frames to allow for stabilization, 
@@ -695,6 +743,8 @@ export class MAGEEngine {
       width = 224,
       height = 224,
       settleFrames = 2,
+      quality = 0.84,
+      type = 'image/png',
     } = {},
   ) {
     if (typeof document === 'undefined') {
@@ -756,8 +806,8 @@ export class MAGEEngine {
       return thumbnailEngine.#_captureFramePreviewDataUrlSync({
         width: w,
         height: h,
-        type: 'image/png',
-        quality: 1,
+        type: type,
+        quality: quality,
       });
     } finally {
       thumbnailEngine.#_disposeForThumbnailCapture();
@@ -814,7 +864,14 @@ export class MAGEEngine {
    * @returns {void}
    */
   dispose() {
+    if (this.#isDisposed) {
+      return;
+    }
+    if (!this.#isRunning) {
+      return;
+    }
     this.#isDisposed = true;
+    this.#isRunning = false;
     if (this.#animationFrameId !== null) {
       cancelAnimationFrame(this.#animationFrameId);
       this.#animationFrameId = null;
@@ -1696,6 +1753,7 @@ export class MAGEEngine {
     this.#controls.autoRotate = true;
     this.#controls.autoRotateSpeed = 0.2;
     this.#controls.saveState();
+    this.#controls.enabled = false; // Start disabled until controls loaded
 
     this.#_ensureViewportToast();
 
@@ -2072,6 +2130,9 @@ export class MAGEEngine {
   }
   
   initControls(options = {}) {
+    // enable threejs orbit controls for mouse interaction
+    this.#controls.enabled = true;
+
     if (this.#controlPanel) {
       return;
     }
@@ -2099,6 +2160,7 @@ export class MAGEEngine {
     let pane = null;
     let fxStudioOverlay = null;
     let sceneCameraDock = null;
+    const useIntegratedControls = Boolean(engine.#controlSettings.integrated);
 
     const rebuildComposer = () => {
       composer = effects.applyPostProcessing(scene, renderer, camera, composer);
@@ -2793,6 +2855,22 @@ export class MAGEEngine {
         const gutter = 12;
         const viewportMargin = 8;
 
+        if (useIntegratedControls) {
+          const panelWidth = Math.max(
+            220,
+            Math.min(300, Math.floor(rect.width * 0.28)),
+          );
+          const maxHeight = Math.max(200, Math.floor(rect.height - viewportMargin * 2));
+          const left = Math.max(viewportMargin, rect.right - panelWidth - viewportMargin);
+          const top = Math.max(viewportMargin, rect.top + viewportMargin);
+
+          panel.style.width = `${panelWidth}px`;
+          panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
+          overlay.style.left = `${Math.round(left)}px`;
+          overlay.style.top = `${Math.round(top)}px`;
+          return;
+        }
+
         let panelWidth = Math.min(380, Math.max(280, Math.floor(window.innerWidth * 0.32)));
         const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
         panelWidth = Math.min(panelWidth, maxAllowed);
@@ -3274,6 +3352,22 @@ export class MAGEEngine {
         const gutter = 12;
         const viewportMargin = 8;
 
+        if (useIntegratedControls) {
+          const panelWidth = Math.max(
+            220,
+            Math.min(290, Math.floor(rect.width * 0.26)),
+          );
+          const maxHeight = Math.max(200, Math.floor(rect.height - viewportMargin * 2));
+          const left = Math.max(viewportMargin, rect.left + viewportMargin);
+          const top = Math.max(viewportMargin, rect.top + viewportMargin);
+
+          panel.style.width = `${panelWidth}px`;
+          panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
+          overlay.style.left = `${Math.round(left)}px`;
+          overlay.style.top = `${Math.round(top)}px`;
+          return;
+        }
+
         let panelWidth = Math.min(360, Math.max(280, Math.floor(window.innerWidth * 0.28)));
         const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
         panelWidth = Math.min(panelWidth, maxAllowed);
@@ -3349,8 +3443,8 @@ export class MAGEEngine {
       paneMount.className = 'mage-pane-host';
       Object.assign(paneMount.style, {
         position: 'absolute',
-        top: '8px',
-        right: '8px',
+        top: useIntegratedControls ? '6px' : '8px',
+        right: useIntegratedControls ? '6px' : '8px',
         zIndex: '20',
       });
       host.appendChild(paneMount);
@@ -3488,8 +3582,8 @@ export class MAGEEngine {
         zIndex: '41',
         display: 'none',
         flexDirection: 'column',
-        gap: '10px',
-        padding: '10px',
+        gap: useIntegratedControls ? '8px' : '10px',
+        padding: useIntegratedControls ? '8px' : '10px',
         maxHeight: '72vh',
         overflowY: 'auto',
         overflowX: 'hidden',
@@ -3506,7 +3600,19 @@ export class MAGEEngine {
         const rect = renderer.domElement.getBoundingClientRect();
         const gutter = 12;
         const viewportMargin = 8;
-        const panelWidth = 214;
+        const panelWidth = useIntegratedControls ? 182 : 214;
+
+        if (useIntegratedControls) {
+          const left = Math.max(viewportMargin, rect.right - panelWidth - viewportMargin);
+          const top = Math.max(viewportMargin, rect.top + 62);
+          const maxHeight = Math.max(180, Math.floor(rect.height - 70 - viewportMargin));
+
+          quickPresetHost.style.left = `${Math.round(left)}px`;
+          quickPresetHost.style.top = `${Math.round(top)}px`;
+          quickPresetHost.style.maxHeight = `${Math.floor(maxHeight)}px`;
+          return;
+        }
+
         const leftSpace = rect.left - gutter;
         const rightSpace = window.innerWidth - rect.right - gutter;
         const leftNudge = 30;
@@ -3584,7 +3690,7 @@ export class MAGEEngine {
         }
       };
 
-      const previewSize = 184;
+      const previewSize = useIntegratedControls ? 148 : 184;
 
       quickPresetButtons = visiblePresetIds.map(presetId => {
         const button = document.createElement('button');
@@ -3602,7 +3708,7 @@ export class MAGEEngine {
           cursor: 'pointer',
           display: 'grid',
           gap: '6px',
-          width: '194px',
+          width: useIntegratedControls ? '160px' : '194px',
           textAlign: 'left',
           boxShadow: '0 6px 20px rgba(0,0,0,0.28)',
           transition: 'transform 120ms ease, filter 120ms ease, opacity 120ms ease',
