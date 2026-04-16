@@ -2146,8 +2146,20 @@ export class MAGEEngine {
       const relX = (bridge.clientX - rect.left) / rect.width;
       const relY = (bridge.clientY - rect.top) / rect.height;
 
+      // Raycast input (NDC)
       this.#inputs.currMouse.x = relX * 2 - 1;
       this.#inputs.currMouse.y = -relY * 2 + 1;
+
+      // Animation/audio input source
+      if (this.#visualizer.controllingAudio) {
+          this.#state.currMouse.x = relX * 2 - 1;
+          this.#state.currMouse.y = -relY * 2 + 1;
+      } else {
+          this.#state.currMouse.x = relX / 4 - 1;
+          this.#state.currMouse.y = -relY / 4 + 1;
+      }
+
+      
 
       const raycaster = new Raycaster();
       raycaster.setFromCamera(this.#inputs.currMouse, this.#camera);
@@ -2323,7 +2335,7 @@ export class MAGEEngine {
     };
   }
   
-  initControls(options = {}) {
+  initControls(inputSource = null) {
     if (!this.#isRunning || this.#isDisposed) {
       if (this.log) console.warn('Cannot initialize controls: MAGEEngine is not running or has been disposed.');
       return;
@@ -2332,10 +2344,7 @@ export class MAGEEngine {
     // Calling initControls() should fully activate control mode,
     // including bridge-driven interactions (tooltips, click actions, docks).
     this.#controlSettings.active = true;
-    if (Object.hasOwn(options, 'integrated')) {
-      this.#controlSettings.integrated = Boolean(options.integrated);
-    }
-
+    
     // enable threejs orbit controls for mouse interaction
     this.#controls.enabled = true;
 
