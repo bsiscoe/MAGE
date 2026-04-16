@@ -127,10 +127,9 @@ export interface MAGEEngineAPI {
    */
   getEngineTime(): number;
   /**
-   * Converts the current state of the MAGE engine into a MAGEPreset object. This allows users to capture the current visual configuration and settings of the engine in a 
-   * serializable format that can be saved, shared, or loaded later to recreate the same visual output. The toPreset method can include options to specify what aspects of the engine's state should be included in the generated preset, such as whether to include the current audio state, visual parameters, or other relevant settings.
-   * @param options An optional object that can specify what aspects of the engine's state to include in the generated preset. For example, it could include flags like includeAudioState, includeVisualParameters, etc.
-   * @return A MAGEPreset object representing the current state of the MAGE engine.
+   * Exports the current engine configuration as a preset object. The exported preset can include the current state, custom settings, and visualizer configuration, 
+   * depending on the specified options.
+   * @returns {MAGEPreset|Object} The exported preset as a MAGEPreset instance or a compact object depending on the specified schema.
    */
   toPreset(): MAGEPreset;
   /**

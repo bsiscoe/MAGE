@@ -40,7 +40,7 @@ import { EMBEDDED_SKYBOXES } from './skyboxes.js';
 const controlTipsImageDataUrl = new URL('../resources/controltips.png', import.meta.url).href;
 
 
-const MAGE_VERSION = '1.1.0';
+const MAGE_VERSION = '1.0.0';
 
 /**
  * @typedef {Object} EngineControlSettings
@@ -86,7 +86,6 @@ export class MAGEEngine {
   #onAfterFrame = null;
   #onPresetLoaded = null;
   #cameraUpdateHook = null;
-  #exportSettingsState = null;
   #importSettingsState = null;
   #refreshSettingsUI = null;
   #animationFrameId = null;
@@ -95,6 +94,7 @@ export class MAGEEngine {
   #controlSettings = false;
   #viewportWidth = 0;
   #viewportHeight = 0;
+  #log = false;
   #viewportToast = {
     el: null,
     visible: false,
@@ -106,6 +106,7 @@ export class MAGEEngine {
   constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {} } = {}) {
     // console log version
     if (log) {
+      this.#log = true;
       console.log(`Initializing MAGE Engine v${MAGE_VERSION}...`);
     }
 
@@ -176,7 +177,6 @@ export class MAGEEngine {
     this.#onAfterFrame = null;
     this.#onPresetLoaded = null;
     this.#cameraUpdateHook = null;
-    this.#exportSettingsState = null;
     this.#importSettingsState = null;
     this.#refreshSettingsUI = null;
     this.#viewportWidth = 0;
@@ -548,68 +548,88 @@ export class MAGEEngine {
 
   /**
    * Exports the current engine configuration as a preset object. The exported preset can include the current state, custom settings, and visualizer configuration, 
-   * depending on the specified options. The preset can be returned in a compact format optimized for AI-assisted generation or a full format that includes all details.
-   * @param {PresetExportSettings} exportSettings - Options for what to include in the exported preset and the format to use. 
-   * (not required, defaults to including state and settings in compact format)
+   * depending on the specified options.
    * @returns {MAGEPreset|Object} The exported preset as a MAGEPreset instance or a compact object depending on the specified schema.
    */
-  toPreset({
-    includeState = true,
-    includeSettings = true,
-    schema = 'compact',
-  } = {}) {
-    if (this.#controls && this.#controls.saveState) {
-      this.#controls.saveState();
-    }
-
-    const controlsState = this.#controls
-      ? {
-        target0: this.#controls.target0,
-        position0: this.#controls.position0,
-        zoom0: this.#controls.zoom0,
-      }
-      : null;
-
+  toPreset() {
     const preset = {
+      version: MAGE_VERSION,
       visualizer: {
         shader: this.#visualizer.shader,
         skyboxPreset: this.#visualizer.skyboxPreset,
         scale: this.#visualizer.scale,
-        render_tooltips: this.#visualizer.render_tooltips,
       },
-      controls: controlsState,
+      controls: this.#controls
+        ? {
+          target0: this.#controls.target0,
+          position0: this.#controls.position0,
+          zoom0: this.#controls.zoom0,
+        }
+        : null,
+      intent: {
+        time_multiplier: this.#state.time_multiplier,
+        minimizing_factor: this.#state.minimizing_factor,
+        power_factor: this.#state.power_factor,
+        pointerDownMultiplier: this.#state.pointerDownMultiplier,
+        base_speed: this.#state.base_speed,
+        easing_speed: this.#state.easing_speed,
+        camTilt: this.#state.camTilt,
+        camOrientationMode: this.#state.camOrientationMode,
+        camOrientationSpeed: this.#state.camOrientationSpeed,
+        autoRotate: this.#controls?.autoRotate,
+        autoRotateSpeed: this.#controls?.autoRotateSpeed,
+        fov: this.#camera?.fov,
+      },
+      fx: {
+        passOrder: this.#effects.getPassOrder(),
+        bloom: {
+          enabled: this.#effects.bloom.enabled,
+          strength: this.#effects.bloom.settings.strength,
+          radius: this.#effects.bloom.settings.radius,
+          threshold: this.#effects.bloom.settings.threshold,
+        },
+        toneMapping: {
+          method: this.#effects.toneMapping.method,
+          exposure: this.#renderer?.toneMappingExposure,
+        },
+        passes: {
+          rgbShift: this.#effects.RGBShift.enabled,
+          dot: this.#effects.dotShader.enabled,
+          technicolor: this.#effects.technicolorShader.enabled,
+          luminosity: this.#effects.luminosityShader.enabled,
+          afterImage: this.#effects.afterImagePass.enabled,
+          sobel: this.#effects.sobelShader.enabled,
+          glitch: this.#effects.glitchPass.enabled,
+          colorify: this.#effects.colorifyShader.enabled,
+          halftone: this.#effects.halftonePass.enabled,
+          gammaCorrection: this.#effects.gammaCorrectionShader.enabled,
+          kaleid: this.#effects.kaleidoShader.enabled,
+          outputPass: this.#effects.outputPass.enabled,
+        },
+        params: {
+          rgbShift: {
+            amount: this.#effects.RGBShift.shader.uniforms.amount.value,
+            angle: this.#effects.RGBShift.shader.uniforms.angle.value,
+          },
+          afterImage: {
+            damp: this.#effects.afterImagePass.shader.uniforms.damp.value,
+          },
+          colorify: {
+            color: this.#effects.colorifyShader.color,
+          },
+          kaleid: {
+            sides: this.#effects.kaleidoShader.shader.uniforms.sides.value,
+            angle: this.#effects.kaleidoShader.shader.uniforms.angle.value,
+          },
+        },
+      },
     };
 
-    if (includeSettings) {
-      try {
-        const settings = this.#exportSettingsState();
-        if (typeof this.#exportSettingsState === 'function' && settings) {
-          preset.settings = settings;
-        }
-      } catch (error) {
-        console.warn('[MAGEEngine.toPreset] Failed to export settings state', error);
-      }
+    preset.state = { ...this.#state };
+
+    if (this.#log) {
+      console.log('Generated preset from current state:', preset);
     }
-
-    console.log('Generated preset from current state:', preset);
-
-    if (includeState) {
-      preset.state = { ...this.#state };
-    }
-
-    if (schema === 'compact') {
-      const compact = this.#_toCompactPreset(includeState);
-      // if (trackHistory) {
-      //   this._trackSavedPreset(compact);
-      // }
-      return compact;
-    }
-
-    preset.version = MAGE_VERSION;
-    if (trackHistory) {
-      this._trackSavedPreset(preset);
-    }
-
     return preset;
   }
 
@@ -1053,87 +1073,6 @@ export class MAGEEngine {
     const bufferHeight = this.#renderer.domElement?.height || Math.max(1, Math.floor(window.innerHeight * window.devicePixelRatio));
     resolution.x = bufferWidth;
     resolution.y = bufferHeight;
-  }
-
-  #_toCompactPreset(includeState = false) {
-    const compact = {
-      version: MAGE_VERSION,
-      visualizer: {
-        shader: this.#visualizer.shader,
-        skyboxPreset: this.#visualizer.skyboxPreset,
-        scale: this.#visualizer.scale,
-      },
-      controls: this.#controls
-        ? {
-          target0: this.#controls.target0,
-          position0: this.#controls.position0,
-          zoom0: this.#controls.zoom0,
-        }
-        : null,
-      intent: {
-        time_multiplier: this.#state.time_multiplier,
-        minimizing_factor: this.#state.minimizing_factor,
-        power_factor: this.#state.power_factor,
-        pointerDownMultiplier: this.#state.pointerDownMultiplier,
-        base_speed: this.#state.base_speed,
-        easing_speed: this.#state.easing_speed,
-        camTilt: this.#state.camTilt,
-        camOrientationMode: this.#state.camOrientationMode,
-        camOrientationSpeed: this.#state.camOrientationSpeed,
-        autoRotate: this.#controls?.autoRotate,
-        autoRotateSpeed: this.#controls?.autoRotateSpeed,
-        fov: this.#camera?.fov,
-      },
-      fx: {
-        passOrder: this.#effects.getPassOrder(),
-        bloom: {
-          enabled: this.#effects.bloom.enabled,
-          strength: this.#effects.bloom.settings.strength,
-          radius: this.#effects.bloom.settings.radius,
-          threshold: this.#effects.bloom.settings.threshold,
-        },
-        toneMapping: {
-          method: this.#effects.toneMapping.method,
-          exposure: this.#renderer?.toneMappingExposure,
-        },
-        passes: {
-          rgbShift: this.#effects.RGBShift.enabled,
-          dot: this.#effects.dotShader.enabled,
-          technicolor: this.#effects.technicolorShader.enabled,
-          luminosity: this.#effects.luminosityShader.enabled,
-          afterImage: this.#effects.afterImagePass.enabled,
-          sobel: this.#effects.sobelShader.enabled,
-          glitch: this.#effects.glitchPass.enabled,
-          colorify: this.#effects.colorifyShader.enabled,
-          halftone: this.#effects.halftonePass.enabled,
-          gammaCorrection: this.#effects.gammaCorrectionShader.enabled,
-          kaleid: this.#effects.kaleidoShader.enabled,
-          outputPass: this.#effects.outputPass.enabled,
-        },
-        params: {
-          rgbShift: {
-            amount: this.#effects.RGBShift.shader.uniforms.amount.value,
-            angle: this.#effects.RGBShift.shader.uniforms.angle.value,
-          },
-          afterImage: {
-            damp: this.#effects.afterImagePass.shader.uniforms.damp.value,
-          },
-          colorify: {
-            color: this.#effects.colorifyShader.color,
-          },
-          kaleid: {
-            sides: this.#effects.kaleidoShader.shader.uniforms.sides.value,
-            angle: this.#effects.kaleidoShader.shader.uniforms.angle.value,
-          },
-        },
-      },
-    };
-
-    if (includeState) {
-      compact.state = { ...this.#state };
-    }
-
-    return compact;
   }
 
   #_captureFramePreviewDataUrlSync({
@@ -3472,12 +3411,12 @@ export class MAGEEngine {
       pane.hidden = true;
 
       // Expose tweakpane state export so engine.toPreset can include settings.
-      engine.#exportSettingsState = () => {
-        if (!pane) {
-          return null;
-        }
-        return pane.exportState();
-      };
+      // engine.#exportSettingsState = () => {
+      //   if (!pane) {
+      //     return null;
+      //   }
+      //   return pane.exportState();
+      // };
 
       engine.#importSettingsState = state => {
         if (!pane) {
