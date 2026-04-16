@@ -151,7 +151,7 @@ export interface MAGEEngineAPI {
    * @param options - An optional object that specifies the options for capturing the thumbnail, including width, height, type, quality, and settleFrames. The settleFrames option allows waiting for a specified number of frames to ensure the scene is stable before capturing the thumbnail.
    * @return A promise that resolves to a data URL string representing the captured thumbnail image, or null if the capture failed.
    */
-  captureThumbnail?(options?: CaptureThumbnailOptions): Promise<string | null>;
+  captureThumbnail?(preset: MAGEPreset, options?: CaptureThumbnailOptions): Promise<string | null>;
   /**
    * Disposes of the MAGE engine instance, releasing all resources, stopping any ongoing processes, and cleaning up event listeners. 
    * After calling dispose, the engine instance should not be used anymore, and a new instance should be created if needed. 
