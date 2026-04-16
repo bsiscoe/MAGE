@@ -7,19 +7,19 @@ MAGE is an AI-powered music visualizer that utilizes heavy randomization of Shad
 ## Installation
 
 ```bash
-npm install mage-1.0.0.tgz
+npm install @notrac/mage
 ```
 
 ## Quick Start
 
 ```javascript
-import { initMAGE } from 'mage';
+import { initMAGE } from '@notrac/mage';
 
 const engine = initMAGE({
-  canvas: document.getElementById('myCanvas'),  // Optional: specify a canvas element
-  withControls: true,                            // Optional: include controls (default: true)
-  autoStart: true,                               // Optional: automatically start rendering (default: false)
-  log: true                                      // Optional: enable logging (default: true)
+  canvas: document.getElementById('myCanvas'),      // Optional: specify a canvas element
+  withControls: { active: true, integrated: true }, // Optional: include controls (default: true)
+  autoStart: true,                                  // Optional: automatically start rendering (default: false)
+  log: true                                         // Optional: enable logging (default: true)
 });
 
 engine.start();
@@ -33,7 +33,7 @@ Initializes and returns a MAGE engine instance with the specified configuration.
 
 **Options:**
 - `canvas?: HTMLCanvasElement` - Target canvas element for rendering (optional)
-- `withControls?: boolean` - Enable interactive UI controls (default: true)
+- `withControls?: { active: boolean; integrated: boolean }` - Enable controls and choose integrated or detached layout
 - `autoStart?: boolean` - Start rendering immediately (default: false)
 - `log?: boolean` - Enable console logging (default: true)
 
@@ -59,7 +59,7 @@ Initializes and returns a MAGE engine instance with the specified configuration.
 
 #### Presets
 
-- **`loadPreset(preset: object | string)`** - Load a preset from a JSON object or URL
+- **`loadPreset(preset: MAGEPreset)`** - Load a preset object
 - **`toPreset()`** - Export the current state as a MAGEPreset JSON object
 
 #### Display
@@ -70,8 +70,8 @@ Initializes and returns a MAGE engine instance with the specified configuration.
 
 #### Capture & Preview
 
-- **`captureFramePreview()`** - Capture the current frame as a preview image
-- **`captureThumbnail()`** - Capture a thumbnail of the current visualization
+- **`captureFramePreview(options?: CaptureFramePreviewOptions)`** - Capture the current frame as a preview image
+- **`captureThumbnail(preset: MAGEPreset, options?: CaptureThumbnailOptions)`** - Capture a thumbnail for a preset
 
 #### Controls
 
@@ -81,12 +81,12 @@ Initializes and returns a MAGE engine instance with the specified configuration.
 ## Example Usage
 
 ```javascript
-import { initMAGE } from 'mage';
+import { initMAGE } from '@notrac/mage';
 
 // Initialize engine
 const engine = initMAGE({
   canvas: document.getElementById('visualizer'),
-  withControls: true,
+  withControls: { active: true, integrated: false },
   autoStart: true
 });
 
@@ -101,11 +101,19 @@ engine.loadPreset({
 
 // Seek and control playback
 engine.seek(30); // Jump to 30 seconds
+engine.scrubAudio(5); // Move playback forward by 5 seconds
 console.log(engine.getAudioTime()); // Current time
 console.log(engine.getAudioDuration()); // Total duration
 
 // Capture visualization
-const thumbnail = engine.captureThumbnail();
+const preset = engine.toPreset();
+const thumbnail = await engine.captureThumbnail(preset, {
+  width: 224,
+  height: 224,
+  type: 'image/png',
+  quality: 0.84,
+  settleFrames: 2,
+});
 
 // Export current state
 const currentPreset = engine.toPreset();
