@@ -668,13 +668,16 @@ export class MAGEEngine {
       return null;
     }
 
+    // Render one fresh frame right before readback to avoid stale/cleared canvas captures.
+    this.#_renderSingleFrame();
+
     const w = Math.max(1, Number.parseInt(`${width}`, 10) || 224);
     const h = Math.max(1, Number.parseInt(`${height}`, 10) || 224);
 
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
-    const context = canvas.getContext('2d', { alpha: false });
+    const context = canvas.getContext('2d', { alpha: true });
     if (!context) {
       return null;
     }
@@ -768,7 +771,7 @@ export class MAGEEngine {
       thumbnailEngine.#renderer.setPixelRatio(1);
       thumbnailEngine.#_syncViewport(true);
 
-      thumbnailEngine.#composer = this.#effects.applyPostProcessing(
+      thumbnailEngine.#composer = thumbnailEngine.#effects.applyPostProcessing(
         thumbnailEngine.#scene,
         thumbnailEngine.#renderer,
         thumbnailEngine.#camera,
@@ -2128,6 +2131,11 @@ export class MAGEEngine {
   }
   
   initControls(options = {}) {
+    if (!this.#isRunning || this.#isDisposed) {
+      if (this.log) console.warn('Cannot initialize controls: MAGEEngine is not running or has been disposed.');
+      return;
+    }
+
     // enable threejs orbit controls for mouse interaction
     this.#controls.enabled = true;
 
@@ -3774,6 +3782,7 @@ export class MAGEEngine {
 
       const replaceWithRuntimePresetPreviews = async () => {
         if (typeof engine.captureThumbnail !== 'function') {
+          console.warn('Engine does not support thumbnail capture, skipping preset preview generation.');
           return;
         }
 

@@ -16,7 +16,7 @@
     "postinstall": "patch-package",
     "generate:embedded-presets": "node scripts/generate_embedded_presets.cjs",
     "generate:embedded-skyboxes": "node scripts/generate_embedded_skyboxes.cjs",
-    "build": "vite build; tsc -p tsconfig.json; node scripts/cleanup-dist.cjs"
+    "build": "vite build; tsc -p tsconfig.json; node scripts/postbuild-types.cjs; node scripts/cleanup-dist.cjs"
   },
   "repository": {
     "type": "git",

@@ -6,3 +6,12 @@ resources/
 scripts/
 mage-1.0.0.tgz
 patches/
+index_old.html
+index.html
+jsconfig.json
+package-lock.json
+tsconfig.json
+schema.js
+style.css
+vite.config.js
+.gitattributes

@@ -14,7 +14,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(600px, 800px) 1fr;
   gap: 16px;
   padding: 16px;
 }
@@ -154,6 +154,9 @@ textarea {
           <button id="btnFullscreen">toggleFullscreen()</button>
           <button id="btnTestDock">Create audio test dock</button>
           <button id="initControls">Initialize tweakpane controls</button>
+          <button id="takeSnapshot">Take snapshot (thumbnail)</button>
+          <button id="presetToThumbnail">to Preset thumbnail</button>
+          <button id="disposeBtn">dispose()</button>
         </div>
       </div>
 
@@ -248,6 +251,50 @@ textarea {
         document.getElementById('btnStart').addEventListener('click', () => {
         engine.start();
         log('start() called');
+        });
+
+        document.getElementById('disposeBtn').addEventListener('click', () => {
+        engine.dispose();
+        log('dispose() called');
+        });
+
+        document.getElementById('presetToThumbnail').addEventListener('click', () => {
+            if (typeof engine.captureThumbnail === 'function') {
+            const presetForThumbnail = engine.toPreset({ includeState: true, includeThumbnail: false });
+            engine.captureThumbnail(presetForThumbnail, { quality: 0.9, settleFrames: 5 }).then(dataUrl => {
+                    if (dataUrl) {
+                        const img = new Image();
+                        img.src = dataUrl;
+                        const w = window.open('');
+                        w.document.write(img.outerHTML);
+                    } else {
+                        log('captureThumbnail did not return a valid image');
+                    }
+                }).catch(error => {
+                    log(`captureThumbnail failed: ${error.message}`);
+                });
+            } else {
+                log('captureThumbnail() not available on engine');
+            }
+        });
+
+        document.getElementById('takeSnapshot').addEventListener('click', () => {
+            if (typeof engine.captureFramePreview === 'function') {
+                engine.captureFramePreview({ width: 320, height: 320, quality: 0.9 }).then(dataUrl => {
+                    if (dataUrl) {
+                        const img = new Image();
+                        img.src = dataUrl;
+                        const w = window.open('');
+                        w.document.write(img.outerHTML);
+                    } else {
+                        log('captureFramePreview did not return a valid image');
+                    }
+                }).catch(error => {
+                    log(`captureFramePreview failed: ${error.message}`);
+                });
+            } else {
+                log('captureFramePreview() not available on engine');
+            }
         });
 
         document.getElementById('btnPlay').addEventListener('click', () => {
