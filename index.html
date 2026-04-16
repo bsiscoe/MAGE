@@ -14,7 +14,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(600px, 800px) 1fr;
   gap: 16px;
   padding: 16px;
 }
@@ -82,6 +82,36 @@ textarea {
   max-height: 220px;
 }
 
+#savedPresetGallery {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.savedPresetCard {
+  border: 1px solid #333b4f;
+  border-radius: 8px;
+  background: #10131b;
+  padding: 8px;
+}
+
+.savedPresetCard img {
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid #3b4257;
+  background: #080b10;
+  margin-top: 6px;
+}
+
+.savedPresetMeta {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
 #mageWrap {
   display: grid;
   place-items: center;
@@ -121,6 +151,12 @@ textarea {
           <button id="btnStart">start()</button>
           <button id="btnPlay">play()</button>
           <button id="btnPause">pause()</button>
+          <button id="btnFullscreen">toggleFullscreen()</button>
+          <button id="btnTestDock">Create audio test dock</button>
+          <button id="initControls">Initialize tweakpane controls</button>
+          <button id="takeSnapshot">Take snapshot (thumbnail)</button>
+          <button id="presetToThumbnail">to Preset thumbnail</button>
+          <button id="disposeBtn">dispose()</button>
         </div>
       </div>
 
@@ -140,6 +176,11 @@ textarea {
           <button id="btnLoadPreset">loadPreset(json)</button>
           <button id="btnExportPreset">toPreset()</button>
         </div>
+      </div>
+
+      <div class="group">
+        <strong>Saved toPresets (session)</strong>
+        <div id="savedPresetGallery"></div>
       </div>
 
       <div class="group">
@@ -166,29 +207,94 @@ textarea {
   <input type="file" id="file" style="display:none;" />
 
   <script type="module">
-    import { initMAGE } from "./mage-engine.mjs";
+    import { initMAGE } from "@notrac/mage";
     window.addEventListener('load', () => {
-      
         const logEl = document.getElementById('log');
         const log = message => {
         const line = `[${new Date().toLocaleTimeString()}] ${message}`;
         logEl.value = `${line}\n${logEl.value}`;
         };
 
+        const savedPresetGallery = document.getElementById('savedPresetGallery');
+        const renderSavedPresetGallery = () => {
+          const presets = typeof engine.getSavedPresets === 'function' ? engine.getSavedPresets() : [];
+          if (!Array.isArray(presets) || presets.length === 0) {
+            savedPresetGallery.innerHTML = '<div class="savedPresetCard"><div class="savedPresetMeta">No presets created yet.</div></div>';
+            return;
+          }
+
+          savedPresetGallery.innerHTML = presets
+            .map((preset, index) => {
+              const when = preset._savedAt ? new Date(preset._savedAt).toLocaleTimeString() : 'unknown';
+              const thumb = typeof preset.thumbnailDataUrl === 'string' ? `<img src="${preset.thumbnailDataUrl}" alt="Preset ${index + 1} thumbnail" />` : '';
+              return `
+                <article class="savedPresetCard">
+                  <div class="savedPresetMeta">Preset ${index + 1} • ${when}</div>
+                  ${thumb}
+                </article>
+              `;
+            })
+            .join('');
+        };
+
         const container = document.getElementById('mage');
         const canvas = document.createElement('canvas');
         container.appendChild(canvas);
 
-        const { engine } = initMAGE({
-            canvas,
-            withControls: true,
-            autoStart: true,
-            assetBaseUrl: './resources/',
+        const engine = initMAGE({
+          canvas,
+          log: true,
+          autoStart: false,
+          withControls: { active: false, integrated: true },
         });
 
         document.getElementById('btnStart').addEventListener('click', () => {
         engine.start();
         log('start() called');
+        });
+
+        document.getElementById('disposeBtn').addEventListener('click', () => {
+        engine.dispose();
+        log('dispose() called');
+        });
+
+        document.getElementById('presetToThumbnail').addEventListener('click', () => {
+            if (typeof engine.captureThumbnail === 'function') {
+            const presetForThumbnail = engine.toPreset({ includeState: true, includeThumbnail: false });
+            engine.captureThumbnail(presetForThumbnail, { quality: 0.9, settleFrames: 5 }).then(dataUrl => {
+                    if (dataUrl) {
+                        const img = new Image();
+                        img.src = dataUrl;
+                        const w = window.open('');
+                        w.document.write(img.outerHTML);
+                    } else {
+                        log('captureThumbnail did not return a valid image');
+                    }
+                }).catch(error => {
+                    log(`captureThumbnail failed: ${error.message}`);
+                });
+            } else {
+                log('captureThumbnail() not available on engine');
+            }
+        });
+
+        document.getElementById('takeSnapshot').addEventListener('click', () => {
+            if (typeof engine.captureFramePreview === 'function') {
+                engine.captureFramePreview({ width: 320, height: 320, quality: 0.9 }).then(dataUrl => {
+                    if (dataUrl) {
+                        const img = new Image();
+                        img.src = dataUrl;
+                        const w = window.open('');
+                        w.document.write(img.outerHTML);
+                    } else {
+                        log('captureFramePreview did not return a valid image');
+                    }
+                }).catch(error => {
+                    log(`captureFramePreview failed: ${error.message}`);
+                });
+            } else {
+                log('captureFramePreview() not available on engine');
+            }
         });
 
         document.getElementById('btnPlay').addEventListener('click', () => {
@@ -199,6 +305,10 @@ textarea {
         document.getElementById('btnPause').addEventListener('click', () => {
         engine.pause();
         log('pause() called');
+        });
+
+        document.getElementById('btnFullscreen').addEventListener('click', () => {
+            engine.toggleFullscreen();
         });
 
         document.getElementById('btnLoadAudioUrl').addEventListener('click', () => {
@@ -227,11 +337,21 @@ textarea {
         }
         });
 
+        document.getElementById('initControls').addEventListener('click', () => {
+            if (typeof engine.initControls === 'function') {
+                engine.initControls();
+                log('initControls() called');
+            } else {
+                log('initControls() not available on engine');
+            }
+        });
+
         document.getElementById('btnExportPreset').addEventListener('click', () => {
-        const preset = engine.toPreset({ includeState: true });
+        const preset = engine.toPreset({ includeState: true, includeThumbnail: true });
         const json = JSON.stringify(preset, null, 2);
         document.getElementById('presetInput').value = json;
-        log('toPreset({ includeState: true }) called');
+        renderSavedPresetGallery();
+        log('toPreset({ includeState: true, includeThumbnail: true }) called');
         });
 
         document.getElementById('btnApplyQuickPreset').addEventListener('click', () => {
@@ -252,6 +372,7 @@ textarea {
             log(`Quick preset applied (presetId=${presetId})`);
         });
 
+        renderSavedPresetGallery();
         log('Engine initialized. API test harness ready.');
     });
   </script>

@@ -1,5 +1,5 @@
 {
   "dependencies": {
-    "mage-engine": "file:mage-engine-1.0.1.tgz"
+    "@notrac/mage": "^1.0.0"
   }
 }
