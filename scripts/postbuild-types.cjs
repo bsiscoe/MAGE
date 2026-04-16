@@ -26,6 +26,33 @@ export interface MAGEPreset {
 }
 
 /**
+ * InputSource is an optional adapter interface for host-managed input.
+ * - getState() provides an initial snapshot.
+ * - subscribe(handler) streams updates and may return an unsubscribe callback.
+ * This interface allows host applications to manage input state and feed it into the MAGE engine, 
+ * providing greater control over input routing and handling. By implementing the InputSource interface, 
+ * host applications can integrate custom input mechanisms or adapt existing ones to work seamlessly 
+ * with the MAGE engine's input system.
+ */
+export interface InputSource {
+  getState?: () => InputState;
+  subscribe?: (handler: (state: InputState) => void) => void | (() => void);
+}
+
+/**
+ * inputState represents externally-managed pointer and interaction signals that can be fed into the engine.
+ */
+export interface InputState {
+  clientX?: number;
+  clientY?: number;
+  pointerOverUi?: boolean;
+  currPointerDown?: number;
+  requestWheelDirection?: -1 | 0 | 1 | number;
+  requestToggleUI?: boolean;
+  requestResetVisualizer?: boolean;
+}
+
+/**
  * CaptureFramePreviewOptions defines the options for capturing a single frame preview from the MAGE engine. It allows users to specify the dimensions, output format, and quality of the captured thumbnail image. The options include:
  * - width: The width of the captured thumbnail in pixels (default is 224).
  * - height: The height of the captured thumbnail in pixels (default is 224).
@@ -52,6 +79,12 @@ export interface CaptureThumbnailOptions extends CaptureFramePreviewOptions {
 /**
  * InputState represents externally-managed pointer and interaction signals that can be fed into the engine.
  * This is useful when the host application wants full control over input routing (for example React apps with layered DOM).
+ * The properties of InputState include:
+ * - clientX and clientY: The current pointer position in client coordinates.
+ * - pointerOverUi: A boolean indicating whether the pointer is currently over the main MAGE UI element.
+ * - currPointerDown: The current pointer down state, represented as a bitfield (e.g., 1 for left button, 2 for right button, etc.).
+ * - requestWheelDirection: A number indicating the requested wheel scroll direction, where -1 represents scroll up, 1 represents scroll down, and 0 or undefined means no scroll.
+ * - requestToggleUI: A boolean indicating whether there is a request to toggle the visibility of the MAGE UI.
  */
 export interface InputState {
   clientX?: number;
@@ -59,10 +92,6 @@ export interface InputState {
   pointerOverUi?: boolean;
   currPointerDown?: number;
   requestWheelDirection?: -1 | 0 | 1 | number;
-  requestToggleUI?: boolean;
-  requestResetVisualizer?: boolean;
-  requestNextShader?: boolean;
-  requestPreviousShader?: boolean;
 }
 
 /**
