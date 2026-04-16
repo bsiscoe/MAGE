@@ -4,8 +4,6 @@ node_modules/
 js/
 resources/
 scripts/
-mage-1.0.0.tgz
-patches/
 index_old.html
 index.html
 jsconfig.json
