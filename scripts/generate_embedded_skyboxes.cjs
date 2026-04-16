@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
-const resourcesDir = path.join(projectRoot, 'resources');
+const resourcesDir = path.join(projectRoot, 'resources/skyboxes');
 const outputFile = path.join(projectRoot, 'js', 'skyboxes.js');
 
 const FACE_NAMES = ['left', 'right', 'up', 'down', 'front', 'back'];
@@ -30,26 +30,26 @@ function fileToDataUri(filePath, ext) {
   return `data:${MIME_TYPES[ext]};base64,${base64}`;
 }
 
-function collectPresetIds() {
+function collectSkyboxIds() {
   const entries = fs.readdirSync(resourcesDir, { withFileTypes: true });
   return entries
-    .filter(entry => entry.isDirectory() && /^preset\d+$/.test(entry.name))
-    .map(entry => Number.parseInt(entry.name.replace('preset', ''), 10))
+    .filter(entry => entry.isDirectory() && /^skybox\d+$/.test(entry.name))
+    .map(entry => Number.parseInt(entry.name.replace('skybox', ''), 10))
     .filter(Number.isFinite)
     .sort((a, b) => a - b);
 }
 
-function collectPresetIdsWithCompleteSkyboxes() {
-  const ids = collectPresetIds();
+function collectSkyboxIdsWithCompleteSkyboxes() {
+  const ids = collectSkyboxIds();
   const complete = [];
 
-  for (const presetId of ids) {
-    const presetDir = path.join(resourcesDir, `preset${presetId}`);
+  for (const skyboxId of ids) {
+    const skyboxDir = path.join(resourcesDir, `skybox${skyboxId}`);
     let hasAnyFace = false;
     let isComplete = true;
 
     for (const faceName of FACE_NAMES) {
-      const faceFile = findFaceFile(presetDir, faceName);
+      const faceFile = findFaceFile(skyboxDir, faceName);
       if (faceFile) {
         hasAnyFace = true;
       } else {
@@ -63,11 +63,11 @@ function collectPresetIdsWithCompleteSkyboxes() {
 
     if (!isComplete) {
       throw new Error(
-        `Preset preset${presetId} has partial skybox images. Include all six faces (${FACE_NAMES.join(', ')}) or remove the partial files.`,
+        `Skybox skybox${skyboxId} has partial skybox images. Include all six faces (${FACE_NAMES.join(', ')}) or remove the partial files.`,
       );
     }
 
-    complete.push(presetId);
+    complete.push(skyboxId);
   }
 
   return complete;
@@ -75,23 +75,23 @@ function collectPresetIdsWithCompleteSkyboxes() {
 
 function parseArgs(argv) {
   const parsed = {
-    minPreset: null,
-    maxPreset: null,
-    presetIds: null,
+    minSkybox: null,
+    maxSkybox: null,
+    skyboxIds: null,
   };
 
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
-    if (token === '--minPreset' && i + 1 < argv.length) {
-      parsed.minPreset = Number.parseInt(argv[++i], 10);
+    if (token === '--minSkybox' && i + 1 < argv.length) {
+      parsed.minSkybox = Number.parseInt(argv[++i], 10);
       continue;
     }
-    if (token === '--maxPreset' && i + 1 < argv.length) {
-      parsed.maxPreset = Number.parseInt(argv[++i], 10);
+    if (token === '--maxSkybox' && i + 1 < argv.length) {
+      parsed.maxSkybox = Number.parseInt(argv[++i], 10);
       continue;
     }
-    if (token === '--presetIds' && i + 1 < argv.length) {
-      parsed.presetIds = argv[++i]
+    if (token === '--skyboxIds' && i + 1 < argv.length) {
+      parsed.skyboxIds = argv[++i]
         .split(',')
         .map(value => Number.parseInt(value.trim(), 10))
         .filter(Number.isFinite)
@@ -103,50 +103,50 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function buildTargetPresetIds(options) {
-  if (Array.isArray(options.presetIds) && options.presetIds.length > 0) {
-    return [...new Set(options.presetIds)];
+function buildTargetSkyboxIds(options) {
+  if (Array.isArray(options.skyboxIds) && options.skyboxIds.length > 0) {
+    return [...new Set(options.skyboxIds)].sort((a, b) => a - b);
   }
 
-  const hasRange = Number.isFinite(options.minPreset) || Number.isFinite(options.maxPreset);
+  const hasRange = Number.isFinite(options.minSkybox) || Number.isFinite(options.maxSkybox);
   if (!hasRange) {
-    return collectPresetIdsWithCompleteSkyboxes();
+    return collectSkyboxIdsWithCompleteSkyboxes();
   }
 
-  const minPreset = Number.isFinite(options.minPreset) ? options.minPreset : 0;
-  const maxPreset = Number.isFinite(options.maxPreset) ? options.maxPreset : minPreset;
-  if (maxPreset < minPreset) {
-    throw new Error(`Invalid range: maxPreset (${maxPreset}) is smaller than minPreset (${minPreset}).`);
+  const minSkybox = Number.isFinite(options.minSkybox) ? options.minSkybox : 0;
+  const maxSkybox = Number.isFinite(options.maxSkybox) ? options.maxSkybox : minSkybox;
+  if (maxSkybox < minSkybox) {
+    throw new Error(`Invalid range: maxSkybox (${maxSkybox}) is smaller than minSkybox (${minSkybox}).`);
   }
 
-  const presetIds = [];
-  for (let id = minPreset; id <= maxPreset; id++) {
-    presetIds.push(id);
+  const skyboxIds = [];
+  for (let id = minSkybox; id <= maxSkybox; id++) {
+    skyboxIds.push(id);
   }
-  return presetIds;
+  return skyboxIds;
 }
 
-function buildEmbeddedSkyboxes(targetPresetIds) {
+function buildEmbeddedSkyboxes(targetSkyboxIds) {
   const embedded = {};
-  const availablePresetIds = new Set(collectPresetIds());
+  const availableSkyboxIds = new Set(collectSkyboxIds());
 
-  for (const presetId of targetPresetIds) {
-    if (!availablePresetIds.has(presetId)) {
-      throw new Error(`Missing resources folder for preset${presetId}.`);
+  for (const skyboxId of targetSkyboxIds) {
+    if (!availableSkyboxIds.has(skyboxId)) {
+      throw new Error(`Missing resources folder for skybox${skyboxId}.`);
     }
 
-    const presetDir = path.join(resourcesDir, `preset${presetId}`);
+    const skyboxDir = path.join(resourcesDir, `skybox${skyboxId}`);
     const faces = {};
 
     for (const faceName of FACE_NAMES) {
-      const faceFile = findFaceFile(presetDir, faceName);
+      const faceFile = findFaceFile(skyboxDir, faceName);
       if (!faceFile) {
-        throw new Error(`Missing sky_${faceName} image in preset${presetId}. Expected one of: ${EXTENSIONS.join(', ')}.`);
+        throw new Error(`Missing sky_${faceName} image in skybox${skyboxId}. Expected one of: ${EXTENSIONS.join(', ')}.`);
       }
       faces[faceName] = fileToDataUri(faceFile.filePath, faceFile.ext);
     }
 
-    embedded[presetId] = faces;
+    embedded[skyboxId] = faces;
   }
 
   return embedded;
@@ -200,18 +200,18 @@ function main() {
   }
 
   const options = parseArgs(process.argv.slice(2));
-  const targetPresetIds = buildTargetPresetIds(options);
-  if (targetPresetIds.length === 0) {
-    throw new Error('No complete skybox presets found. Add sky_left/right/up/down/front/back images under resources/presetX.');
+  const targetSkyboxIds = buildTargetSkyboxIds(options);
+  if (targetSkyboxIds.length === 0) {
+    throw new Error('No complete skyboxes found. Add sky_left/right/up/down/front/back images under resources/skyboxes/skyboxX.');
   }
 
-  const embedded = buildEmbeddedSkyboxes(targetPresetIds);
+  const embedded = buildEmbeddedSkyboxes(targetSkyboxIds);
   const source = toModuleSource(embedded);
 
   fs.writeFileSync(outputFile, source, 'utf8');
 
   const generatedCount = Object.keys(embedded).length;
-  const generatedIds = targetPresetIds.join(', ');
+  const generatedIds = targetSkyboxIds.join(', ');
   console.log(
     `Generated ${path.relative(projectRoot, outputFile)} with ${generatedCount} embedded skybox preset(s) for ids: ${generatedIds}.`,
   );

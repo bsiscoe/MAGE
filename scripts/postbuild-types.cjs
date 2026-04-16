@@ -50,6 +50,32 @@ export interface CaptureThumbnailOptions extends CaptureFramePreviewOptions {
 }
 
 /**
+ * InputState represents externally-managed pointer and interaction signals that can be fed into the engine.
+ * This is useful when the host application wants full control over input routing (for example React apps with layered DOM).
+ */
+export interface InputState {
+  clientX?: number;
+  clientY?: number;
+  pointerOverUi?: boolean;
+  currPointerDown?: number;
+  requestWheelDirection?: -1 | 0 | 1 | number;
+  requestToggleUI?: boolean;
+  requestResetVisualizer?: boolean;
+  requestNextShader?: boolean;
+  requestPreviousShader?: boolean;
+}
+
+/**
+ * InputSource is an optional adapter interface for host-managed input.
+ * - getState() provides an initial snapshot.
+ * - subscribe(handler) streams updates and may return an unsubscribe callback.
+ */
+export interface InputSource {
+  getState?: () => InputState;
+  subscribe?: (handler: (state: InputState) => void) => void | (() => void);
+}
+
+/**
  * @API MAGEEngineAPI
  * @description The MAGEEngineAPI provides a set of methods for controlling the MAGE engine, including audio management, preset loading, canvas manipulation, fullscreen toggling, engine time retrieval, preset conversion, viewport messaging, frame preview and thumbnail capture, and resource disposal. It serves as the primary interface for interacting with the MAGE engine and enables users to create and manipulate visual configurations in a flexible and efficient manner.
  * @example
@@ -139,6 +165,19 @@ export interface MAGEEngineAPI {
    */
   showViewportMessage(message: string, durationMs?: number): void;
   /**
+   * Applies externally managed input state for this frame.
+   * Calling this method automatically activates external input mode.
+   */
+  setInputState(inputState?: InputState): void;
+  /**
+   * Attaches an external input source adapter.
+   */
+  attachInputSource(inputSource?: InputSource | null): void;
+  /**
+   * Detaches any external input source and returns to internal window input listeners.
+   */
+  detachInputSource(): void;
+  /**
    * Captures a single frame preview of the current visual output of the MAGE engine and returns it as a data URL string. 
    * @param options An optional object that specifies the options for capturing the frame preview, including width, height, type, and quality.
    * @return A promise that resolves to a data URL string representing the captured frame preview image, or null if the capture failed.
@@ -163,6 +202,14 @@ export interface MAGEEngineAPI {
    * allowing users to navigate the 3D scene by clicking and dragging the mouse. This method should be called after the engine has been initialized and is ready to accept user input.
    */
   initControls(): void;
+  /**
+   * Opens the preset dock, which is a user interface component that allows users to browse and select default MAGE presets. 
+   * The preset dock is intended as a default method and is not necessarily required for all hosts. It is designed to provide
+   * several examples of presets and can be used as a reference for how to implement preset browsing and selection in different
+   * host applications. The implementation of the preset dock may vary depending on the specific requirements and design of the 
+   * host application, and it is not a mandatory feature for all MAGE engine integrations.
+   */
+  openPresetDock?(): void;
 }
 
 /**

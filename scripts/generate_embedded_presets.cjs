@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
-const resourcesDir = path.join(projectRoot, 'resources');
+const resourcesDir = path.join(projectRoot, 'resources/presets');
 const outputFile = path.join(projectRoot, 'js', 'presets.js');
 
 function collectPresetIds() {

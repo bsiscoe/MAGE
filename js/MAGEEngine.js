@@ -27,16 +27,21 @@
   BoxGeometry,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createSculptureWithGeometry } from 'shader-park-core';
-import { generateshaderparkcode } from './generateshaderparkcode.js';
-import { MAGEEffects } from './MAGEEffects.js';
-import { reverseAudioBuffer } from './helpers.js';
-import { getEmbeddedSkyboxFaces } from './skyboxes.js';
+
 import { MAGEVisualizer } from './MAGEVisualizer.js';
 import { MAGEPreset } from './MAGEPreset.js';
+import { MAGEEffects } from './MAGEEffects.js';
+import { MAGEPresetDock } from './MAGEPresetDock.js';
+
+import { reverseAudioBuffer } from './helpers.js';
+import { getEmbeddedSkyboxFaces, EMBEDDED_SKYBOXES  } from './skyboxes.js';
+
+import { createSculptureWithGeometry } from 'shader-park-core';
+import { generateshaderparkcode } from './generateshaderparkcode.js';
+
+
 import { Pane } from 'tweakpane';
-import { getEmbeddedPresetById, getEmbeddedPresetIds } from './presets.js';
-import { EMBEDDED_SKYBOXES } from './skyboxes.js';
+
 const controlTipsImageDataUrl = new URL('../resources/controltips.png', import.meta.url).href;
 
 
@@ -92,8 +97,13 @@ export class MAGEEngine {
   #isDisposed = false;
   #isRunning = false;
   #controlSettings = false;
+  #viewportInputBridge = null;
+  #windowInputBridge = null;
+  #externalInputBridge = null;
+  #externalInputUnsubscribe = null;
   #viewportWidth = 0;
   #viewportHeight = 0;
+  #presetDock = null;
   #log = false;
   #viewportToast = {
     el: null,
@@ -106,8 +116,8 @@ export class MAGEEngine {
   constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {} } = {}) {
     // console log version
     if (log) {
-      this.#log = true;
       console.log(`Initializing MAGE Engine v${MAGE_VERSION}...`);
+      this.#log = true;
     }
 
     // Optional HTMLCanvasElement to render into. If not provided, a canvas
@@ -118,6 +128,7 @@ export class MAGEEngine {
       integrated: Boolean(integrated)
     };
     this.#controlPanel = null;
+    this.#presetDock = null;
 
     // Core Three.js objects
     this.#scene = null;
@@ -393,7 +404,6 @@ export class MAGEEngine {
       );
 
       fileInput.click();
-      this.#audio.autoplay = true;
       return;
     }
 
@@ -647,6 +657,69 @@ export class MAGEEngine {
     this.#viewportToast.el.textContent = String(message ?? '');
     this.#viewportToast.el.style.opacity = '1';
     this.#viewportToast.el.style.display = 'block';
+  }
+
+  /**
+   * Applies externally managed input state for this frame.
+   * Calling this method automatically activates external input mode.
+   * @param {Object} inputState
+   * @returns {void}
+   */
+  setInputState(inputState = {}) {
+    if (!this.#externalInputBridge) {
+      this.#externalInputBridge = this.#_createInputBridgeState(this.#viewportInputBridge);
+    }
+    this.#_applyInputStatePatch(this.#externalInputBridge, inputState);
+    this.#viewportInputBridge = this.#externalInputBridge;
+  }
+
+  /**
+   * Attaches an external input source. The source can expose either:
+   * - getState(): Object
+   * - subscribe(handler): () => void
+   * @param {Object} inputSource
+   * @returns {void}
+   */
+  attachInputSource(inputSource = null) {
+    this.detachInputSource();
+
+    this.#externalInputBridge = this.#_createInputBridgeState(this.#viewportInputBridge);
+    this.#viewportInputBridge = this.#externalInputBridge;
+
+    if (!inputSource || typeof inputSource !== 'object') {
+      return;
+    }
+
+    if (typeof inputSource.getState === 'function') {
+      const snapshot = inputSource.getState();
+      this.#_applyInputStatePatch(this.#externalInputBridge, snapshot);
+    }
+
+    if (typeof inputSource.subscribe === 'function') {
+      const unsubscribe = inputSource.subscribe(nextState => {
+        this.#_applyInputStatePatch(this.#externalInputBridge, nextState);
+      });
+
+      if (typeof unsubscribe === 'function') {
+        this.#externalInputUnsubscribe = unsubscribe;
+      }
+    }
+  }
+
+  /**
+   * Detaches any external input source and returns to internal window input listeners.
+   * @returns {void}
+   */
+  detachInputSource() {
+    if (typeof this.#externalInputUnsubscribe === 'function') {
+      this.#externalInputUnsubscribe();
+    }
+    this.#externalInputUnsubscribe = null;
+    this.#externalInputBridge = null;
+
+    if (this.#windowInputBridge) {
+      this.#viewportInputBridge = this.#windowInputBridge;
+    }
   }
 
   // getSavedPresets() {
@@ -952,6 +1025,19 @@ export class MAGEEngine {
       this.#controls.dispose();
       this.#controls = null;
     }
+    if (typeof this.#externalInputUnsubscribe === 'function') {
+      this.#externalInputUnsubscribe();
+    }
+    if (this.#windowInputBridge && this.#windowInputBridge !== this.#viewportInputBridge) {
+      this.#windowInputBridge.detach();
+    }
+    if (this.#viewportInputBridge) {
+      this.#viewportInputBridge.detach();
+      this.#viewportInputBridge = null;
+    }
+    this.#externalInputUnsubscribe = null;
+    this.#externalInputBridge = null;
+    this.#windowInputBridge = null;
     if (this.#listener) {
       this.#listener = null;
     }
@@ -1867,10 +1953,6 @@ export class MAGEEngine {
     //   document.title = 'MAGE';
     // }
 
-    // use easing and linear interpolation to smoothly animate mouse this.#effects
-    this.#state.pointerDown = 0.1 * this.#state.currPointerDown + 0.9 * this.#state.pointerDown;
-    this.#state.mouse.lerp(this.#state.currMouse, 0.05);
-
     let bass_input = 0;
     let mid_input = 0;
 
@@ -1901,46 +1983,7 @@ export class MAGEEngine {
     // Keep controls authoritative for camera motion, then apply tilt orientation once.
     this.#controls.update();
 
-    // ONLY CHECK PIXEL IF IT INTERSECTS
-    const os = this.#_getOS();
-    const isDesktopOS = os === 'Windows' || os === 'Mac OS' || os === 'Linux';
-    if (this.#controls.enabled && isDesktopOS) {
-      const raycaster = new Raycaster();
-      raycaster.setFromCamera(this.#inputs.currMouse, this.#camera);
-      const intersects = this.#visualizer.mesh ? raycaster.intersectObject(this.#visualizer.mesh) : [];
-      if (intersects.length > 0) {
-        this.#visualizer.intersected = true;
-
-        // Render Shader Park material to the render target
-        if (this.#renderTarget && this.#rtScene && this.#rtCamera) {
-          this.#renderer.setRenderTarget(this.#renderTarget);
-          this.#renderer.render(this.#rtScene, this.#rtCamera);
-          this.#renderer.setRenderTarget(null); // Reset to default framebuffer
-
-          // Read pixel color from render target
-          const pixelBuffer = new Uint8Array(4);
-          const hitNdc = intersects[0].point.clone().project(this.#camera);
-          const w = this.#renderTarget.width;
-          const h = this.#renderTarget.height;
-          const x = Math.max(0, Math.min(w - 1, Math.floor((hitNdc.x + 1) * 0.5 * (w - 1))));
-          const y = Math.max(0, Math.min(h - 1, Math.floor((hitNdc.y + 1) * 0.5 * (h - 1))));
-
-          this.#renderer.readRenderTargetPixels(this.#renderTarget, x, y, 1, 1, pixelBuffer);
-
-          // Check if pixel belongs to shader (e.g., non-zero alpha)
-          const nearCenter = this.#_isPointerNearVisualizerCenter(this.#visualizer.centerClickRadiusNdc);
-          if (pixelBuffer[3] > 0 && nearCenter) {
-            this.#_growVisualizer();
-            this.#visualizer.clickable = true;
-          } else {
-            this.#visualizer.clickable = false;
-          }
-        }
-      } else {
-        this.#visualizer.intersected = false;
-        this.#visualizer.clickable = false;
-      }
-    }
+    this.#_updateViewportInteractionFromBridge();
 
     if (this.#viewportToast.el && this.#viewportToast.visible) {
       const elapsedMs = performance.now() - this.#viewportToast.shownAt;
@@ -1990,6 +2033,217 @@ export class MAGEEngine {
     const dy = this.#inputs.currMouse.y - meshCenterNdc.y;
     const distance = Math.hypot(dx, dy);
     return distance <= Math.max(0.01, Number(maxDistanceNdc) || 0.35);
+  }
+
+  #_createInputBridgeState(sourceBridge = null) {
+    return {
+      clientX: Number.NaN,
+      clientY: Number.NaN,
+      pointerOverUi: false,
+      requestToggleUI: false,
+      requestResetVisualizer: false,
+      requestNextShader: false,
+      requestPreviousShader: false,
+      requestWheelDirection: 0,
+      onToggleUI: sourceBridge?.onToggleUI || null,
+      onHideQuickPresets: sourceBridge?.onHideQuickPresets || null,
+      onUpdateTooltip: sourceBridge?.onUpdateTooltip || null,
+      detach() {},
+    };
+  }
+
+  #_applyInputStatePatch(bridge, patch) {
+    if (!bridge || !patch || typeof patch !== 'object') {
+      return;
+    }
+
+    if (Number.isFinite(patch.clientX)) bridge.clientX = Number(patch.clientX);
+    if (Number.isFinite(patch.clientY)) bridge.clientY = Number(patch.clientY);
+    if (typeof patch.pointerOverUi === 'boolean') bridge.pointerOverUi = patch.pointerOverUi;
+
+    if (typeof patch.requestToggleUI === 'boolean') bridge.requestToggleUI = patch.requestToggleUI;
+    if (typeof patch.requestResetVisualizer === 'boolean') bridge.requestResetVisualizer = patch.requestResetVisualizer;
+    if (typeof patch.requestNextShader === 'boolean') bridge.requestNextShader = patch.requestNextShader;
+    if (typeof patch.requestPreviousShader === 'boolean') bridge.requestPreviousShader = patch.requestPreviousShader;
+
+    if (Number.isFinite(patch.requestWheelDirection)) {
+      const raw = Number(patch.requestWheelDirection);
+      bridge.requestWheelDirection = raw < 0 ? -1 : raw > 0 ? 1 : 0;
+    }
+
+    if (Number.isFinite(patch.currPointerDown) && this.#state) {
+      this.#state.currPointerDown = Number(patch.currPointerDown);
+    }
+  }
+
+  #_tryToGetInputsFromMouseEvents() {
+    const inputSource = {
+      getState() {
+        return { clientX: 0, clientY: 0, pointerOverUi: false, currPointerDown: 0 };
+      },
+      subscribe(handler) {
+        const onMove = event => {
+          handler({
+            clientX: event.clientX,
+            clientY: event.clientY,
+            pointerOverUi: false,
+          });
+        };
+
+        const onDown = () => handler({ currPointerDown: 1.0 });
+        const onUp = () => handler({ currPointerDown: 0.0 });
+
+        window.addEventListener('pointermove', onMove, { capture: true });
+        window.addEventListener('pointerdown', onDown, { capture: true });
+        window.addEventListener('pointerup', onUp, { capture: true });
+
+        return () => {
+          window.removeEventListener('pointermove', onMove, { capture: true });
+          window.removeEventListener('pointerdown', onDown, { capture: true });
+          window.removeEventListener('pointerup', onUp, { capture: true });
+        };
+      },
+    };
+
+    return inputSource;
+  }
+
+  #_updateViewportInteractionFromBridge() {
+    if (!this.#controlSettings.active) {
+      return;
+    }
+    
+    const bridge = this.#viewportInputBridge;
+    if (!this.#renderer?.domElement || !this.#camera || !this.#visualizer || !this.#inputs || !this.#controls) {
+      return;
+    }
+
+    if (!bridge) {
+      // If no bridge, use defaults that allow interaction when pointer is over the canvas
+      const input = this.#_tryToGetInputsFromMouseEvents();
+      this.attachInputSource(input);
+      return;
+    }
+
+    // use easing and linear interpolation to smoothly animate mouse this.#effects
+    this.#state.pointerDown = 0.1 * this.#state.currPointerDown + 0.9 * this.#state.pointerDown;
+    this.#state.mouse.lerp(this.#state.currMouse, 0.05);
+
+    const domElement = this.#renderer.domElement;
+    const rect = domElement.getBoundingClientRect();
+    const hasPointer = Number.isFinite(bridge.clientX) && Number.isFinite(bridge.clientY);
+    const insideViewport = Boolean(
+      hasPointer
+      && bridge.clientX >= rect.left
+      && bridge.clientX <= rect.right
+      && bridge.clientY >= rect.top
+      && bridge.clientY <= rect.bottom,
+    );
+    const isDesktopOS = ['Windows', 'Mac OS', 'Linux'].includes(this.#_getOS());
+    const canRaycast = insideViewport && !bridge.pointerOverUi && this.#controls.enabled && isDesktopOS;
+
+    if (canRaycast) {
+      const relX = (bridge.clientX - rect.left) / rect.width;
+      const relY = (bridge.clientY - rect.top) / rect.height;
+
+      this.#inputs.currMouse.x = relX * 2 - 1;
+      this.#inputs.currMouse.y = -relY * 2 + 1;
+
+      const raycaster = new Raycaster();
+      raycaster.setFromCamera(this.#inputs.currMouse, this.#camera);
+      const intersects = this.#visualizer.mesh ? raycaster.intersectObject(this.#visualizer.mesh) : [];
+
+      if (intersects.length > 0) {
+        this.#visualizer.intersected = true;
+
+        if (this.#renderTarget && this.#rtScene && this.#rtCamera) {
+          this.#renderer.setRenderTarget(this.#renderTarget);
+          this.#renderer.render(this.#rtScene, this.#rtCamera);
+          this.#renderer.setRenderTarget(null);
+
+          const pixelBuffer = new Uint8Array(4);
+          const hitNdc = intersects[0].point.clone().project(this.#camera);
+          const w = this.#renderTarget.width;
+          const h = this.#renderTarget.height;
+          const x = Math.max(0, Math.min(w - 1, Math.floor((hitNdc.x + 1) * 0.5 * (w - 1))));
+          const y = Math.max(0, Math.min(h - 1, Math.floor((hitNdc.y + 1) * 0.5 * (h - 1))));
+
+          this.#renderer.readRenderTargetPixels(this.#renderTarget, x, y, 1, 1, pixelBuffer);
+
+          const nearCenter = this.#_isPointerNearVisualizerCenter(this.#visualizer.centerClickRadiusNdc);
+          if (pixelBuffer[3] > 0 && nearCenter) {
+            this.#_growVisualizer();
+            this.#visualizer.clickable = true;
+          } else {
+            this.#visualizer.clickable = false;
+          }
+        }
+      } else {
+        this.#visualizer.intersected = false;
+        this.#visualizer.clickable = false;
+      }
+    } else {
+      this.#visualizer.intersected = false;
+      this.#visualizer.clickable = false;
+      this.#visualizer.controllingAudio = false;
+    }
+
+    if (typeof bridge.onUpdateTooltip === 'function') {
+      bridge.onUpdateTooltip({
+        visible: this.#visualizer.clickable && this.#visualizer.render_tooltips,
+        x: bridge.clientX,
+        y: bridge.clientY,
+      });
+    }
+
+    const canTriggerInteraction = this.#visualizer.intersected && this.#visualizer.clickable;
+
+    if (bridge.requestWheelDirection !== 0) {
+      if (canTriggerInteraction) {
+        if (bridge.requestWheelDirection < 0) {
+          this.#visualizer.nextShader();
+        } else {
+          this.#visualizer.previousShader();
+        }
+      }
+      bridge.requestWheelDirection = 0;
+    }
+
+    if (bridge.requestToggleUI) {
+      if (insideViewport && !bridge.pointerOverUi) {
+        if (typeof bridge.onHideQuickPresets === 'function') {
+          bridge.onHideQuickPresets();
+        }
+        if (typeof bridge.onToggleUI === 'function') {
+          bridge.onToggleUI();
+        }
+      }
+      bridge.requestToggleUI = false;
+    }
+
+    if (bridge.requestResetVisualizer) {
+      if (canTriggerInteraction) {
+        this.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false });
+        if (typeof bridge.onHideQuickPresets === 'function') {
+          bridge.onHideQuickPresets();
+        }
+      }
+      bridge.requestResetVisualizer = false;
+    }
+
+    if (bridge.requestNextShader) {
+      if (canTriggerInteraction) {
+        this.#visualizer.nextShader();
+      }
+      bridge.requestNextShader = false;
+    }
+
+    if (bridge.requestPreviousShader) {
+      if (canTriggerInteraction) {
+        this.#visualizer.previousShader();
+      }
+      bridge.requestPreviousShader = false;
+    }
   }
 
   #_getOS() {
@@ -2075,12 +2329,16 @@ export class MAGEEngine {
       return;
     }
 
+    // Calling initControls() should fully activate control mode,
+    // including bridge-driven interactions (tooltips, click actions, docks).
+    this.#controlSettings.active = true;
+    if (Object.hasOwn(options, 'integrated')) {
+      this.#controlSettings.integrated = Boolean(options.integrated);
+    }
+
     // enable threejs orbit controls for mouse interaction
     this.#controls.enabled = true;
 
-    if (this.#controlPanel) {
-      return;
-    }
     const engine = this;
     const scene = engine.#scene;
     const renderer = engine.#renderer;
@@ -2097,8 +2355,6 @@ export class MAGEEngine {
     const visualizer = engine.#visualizer;
     const inputs = engine.#inputs;
 
-    const EMBEDDED_PRESET_IDS = getEmbeddedPresetIds();
-
     let composer = engine.#composer;
     let audio = engine.#audio;
     let reversedAudio = engine.#reversedAudio;
@@ -2106,6 +2362,125 @@ export class MAGEEngine {
     let fxStudioOverlay = null;
     let sceneCameraDock = null;
     const useIntegratedControls = Boolean(engine.#controlSettings.integrated);
+
+    const createViewportInputBridge = () => {
+      const controller = new AbortController();
+
+      const bridge = {
+        clientX: Number.NaN,
+        clientY: Number.NaN,
+        pointerOverUi: false,
+        requestToggleUI: false,
+        requestResetVisualizer: false,
+        requestNextShader: false,
+        requestPreviousShader: false,
+        requestWheelDirection: 0,
+        onToggleUI: null,
+        onHideQuickPresets: null,
+        onUpdateTooltip: null,
+        detach() {
+          controller.abort();
+        },
+      };
+
+      const isUiEvent = event => {
+        const target = event?.target;
+        const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
+
+        if (!path.includes(renderer.domElement)) {
+          return true;
+        }
+
+        if (!(target instanceof Element)) {
+          return false;
+        }
+
+        return Boolean(
+          target.closest('.tp-dfwv')
+          || target.closest('.mage-pane-host')
+          || target.closest('.mage-embedded-presets')
+          || target.closest('.mage-fx-layers-overlay')
+          || target.closest('.mage-fx-studio-overlay')
+          || target.closest('.mage-fx-studio-dock')
+          || target.closest('.mage-scene-camera-dock')
+          || target.closest('.mage-dock-launcher')
+        );
+      };
+
+      const syncPointer = event => {
+        bridge.clientX = event.clientX;
+        bridge.clientY = event.clientY;
+        bridge.pointerOverUi = isUiEvent(event);
+      };
+
+      const resetState = () => {
+        bridge.requestToggleUI = false;
+        bridge.requestResetVisualizer = false;
+        bridge.requestNextShader = false;
+        bridge.requestPreviousShader = false;
+        bridge.requestWheelDirection = 0;
+        if (engine.#state) {
+          engine.#state.currPointerDown = 0.0;
+        }
+      };
+
+      window.addEventListener('pointermove', event => {
+        syncPointer(event);
+      }, { capture: true, passive: true, signal: controller.signal });
+
+      window.addEventListener('pointerdown', event => {
+        syncPointer(event);
+        if (bridge.pointerOverUi) {
+          resetState();
+          return;
+        }
+
+        if (engine.#state) {
+          engine.#state.currPointerDown = 1.0;
+        }
+      }, { capture: true, passive: true, signal: controller.signal });
+
+      window.addEventListener('pointerup', event => {
+        syncPointer(event);
+        if (bridge.pointerOverUi) {
+          resetState();
+          return;
+        }
+
+        if (engine.#state) {
+          engine.#state.currPointerDown = 0.0 + 1 * engine.#state.pointerDownMultiplier;
+        }
+
+        if (event.button === 2) {
+          bridge.requestToggleUI = true;
+        } else if (event.button === 0) {
+          bridge.requestResetVisualizer = true;
+        }
+      }, { capture: true, passive: true, signal: controller.signal });
+
+      window.addEventListener('wheel', event => {
+        syncPointer(event);
+        if (bridge.pointerOverUi) {
+          return;
+        }
+
+        bridge.requestWheelDirection = event.deltaY < 0 ? -1 : event.deltaY > 0 ? 1 : 0;
+      }, { capture: true, passive: true, signal: controller.signal });
+
+      window.addEventListener('blur', resetState, { signal: controller.signal });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          resetState();
+        }
+      }, { signal: controller.signal });
+
+      return bridge;
+    };
+
+    engine.#windowInputBridge = createViewportInputBridge();
+    if (!engine.#externalInputBridge) {
+      engine.#viewportInputBridge = engine.#windowInputBridge;
+    }
 
     const rebuildComposer = () => {
       composer = this.#effects.applyPostProcessing(scene, renderer, camera, composer);
@@ -2239,16 +2614,6 @@ export class MAGEEngine {
       fxStudioOverlay?.refresh();
       sceneCameraDock?.refresh();
       rebuildComposer();
-    };
-
-    const loadPresetById = async presetId => {
-      const embeddedPreset = getEmbeddedPresetById(presetId);
-      if (embeddedPreset) {
-        const appliedEmbedded = engine.loadPreset(embeddedPreset);
-        return Boolean(appliedEmbedded);
-      }
-
-      return false;
     };
 
     const createFxStudioOverlay = () => {
@@ -3506,338 +3871,11 @@ export class MAGEEngine {
     };
 
     const eventSetup = () => {
-      const quickPresetHost = document.createElement('div');
-      const visiblePresetIds = EMBEDDED_PRESET_IDS.filter(presetId => presetId !== 0);
-      let quickPresetButtons = [];
-      const quickPresetPreviewImages = new Map();
-      let selectedPresetId = null;
-      const engineLoadingMask = document.createElement('div');
-      const engineLoadingLabel = document.createElement('div');
-
-      const setQuickPresetsVisible = visible => {
-        quickPresetHost.style.display = visible ? 'flex' : 'none';
-        if (visible) {
-          positionPresetDock();
+      const hideQuickPresets = () => {
+        if (engine.#presetDock) {
+          engine.#presetDock.setQuickPresetsVisible(false);
         }
       };
-
-      quickPresetHost.className = 'mage-embedded-presets';
-      Object.assign(quickPresetHost.style, {
-        position: 'fixed',
-        zIndex: '41',
-        display: 'none',
-        flexDirection: 'column',
-        gap: useIntegratedControls ? '8px' : '10px',
-        padding: useIntegratedControls ? '8px' : '10px',
-        maxHeight: '72vh',
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        borderRadius: '12px',
-        border: '1px solid rgba(255,255,255,0.16)',
-        background: 'linear-gradient(150deg, rgba(18,26,38,0.78), rgba(11,16,25,0.82))',
-        backdropFilter: 'blur(8px)',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-        alignItems: 'flex-start',
-      });
-      document.body.appendChild(quickPresetHost);
-
-      const positionPresetDock = () => {
-        const rect = renderer.domElement.getBoundingClientRect();
-        const gutter = 12;
-        const viewportMargin = 8;
-        const panelWidth = useIntegratedControls ? 182 : 214;
-
-        if (useIntegratedControls) {
-          const left = Math.max(viewportMargin, rect.right - panelWidth - viewportMargin);
-          const top = Math.max(viewportMargin, rect.top + 62);
-          const maxHeight = Math.max(180, Math.floor(rect.height - 70 - viewportMargin));
-
-          quickPresetHost.style.left = `${Math.round(left)}px`;
-          quickPresetHost.style.top = `${Math.round(top)}px`;
-          quickPresetHost.style.maxHeight = `${Math.floor(maxHeight)}px`;
-          return;
-        }
-
-        const leftSpace = rect.left - gutter;
-        const rightSpace = window.innerWidth - rect.right - gutter;
-        const leftNudge = 30;
-
-        let left = rect.left - panelWidth - gutter - leftNudge;
-        if (leftSpace < panelWidth && rightSpace >= panelWidth) {
-          left = rect.right + gutter;
-        } else if (leftSpace < panelWidth && rightSpace < panelWidth) {
-          left = viewportMargin;
-        }
-
-        const top = Math.max(viewportMargin, Math.min(rect.top, window.innerHeight - 120));
-        const maxHeight = Math.max(220, Math.min(rect.height, window.innerHeight - top - viewportMargin));
-
-        quickPresetHost.style.left = `${Math.round(left)}px`;
-        quickPresetHost.style.top = `${Math.round(top)}px`;
-        quickPresetHost.style.maxHeight = `${Math.floor(maxHeight)}px`;
-      };
-
-      const handlePresetDockLayoutChange = () => {
-        if (quickPresetHost.style.display !== 'none') {
-          positionPresetDock();
-        }
-      };
-      window.addEventListener('resize', handlePresetDockLayoutChange);
-      window.addEventListener('scroll', handlePresetDockLayoutChange, true);
-
-      engineLoadingMask.className = 'mage-engine-loading-mask';
-      Object.assign(engineLoadingMask.style, {
-        position: 'absolute',
-        inset: '0',
-        zIndex: '35',
-        display: 'none',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(6,10,16,0.9)',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(3px)',
-      });
-
-      engineLoadingLabel.textContent = 'Loading engine...';
-      Object.assign(engineLoadingLabel.style, {
-        color: '#fff',
-        fontSize: '14px',
-        fontWeight: '700',
-        letterSpacing: '0.02em',
-        borderRadius: '999px',
-        border: '1px solid rgba(255,255,255,0.22)',
-        background: 'rgba(14,22,34,0.86)',
-        padding: '10px 14px',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
-      });
-      engineLoadingMask.appendChild(engineLoadingLabel);
-      host.appendChild(engineLoadingMask);
-
-      const setEngineLoadingMaskActive = (active, message = 'Loading engine...') => {
-        const visible = Boolean(active);
-        engineLoadingMask.style.display = visible ? 'flex' : 'none';
-        engineLoadingLabel.textContent = message;
-        if (renderer?.domElement) {
-          renderer.domElement.style.visibility = visible ? 'hidden' : 'visible';
-        }
-        if (visible && typeof engine.showViewportMessage === 'function') {
-          engine.showViewportMessage(message, 60_000);
-        } else if (!visible && typeof engine.#_hideViewportMessage === 'function') {
-          engine.#_hideViewportMessage();
-        }
-      };
-
-      const setQuickPresetButtonsDisabled = disabled => {
-        for (const button of quickPresetButtons) {
-          button.disabled = disabled;
-          button.style.opacity = disabled ? '0.6' : '1';
-          button.style.cursor = disabled ? 'progress' : 'pointer';
-        }
-      };
-
-      const previewSize = useIntegratedControls ? 148 : 184;
-
-      quickPresetButtons = visiblePresetIds.map(presetId => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        Object.assign(button.style, {
-          border: '1px solid rgba(255,255,255,0.25)',
-          borderRadius: '10px',
-          background: 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))',
-          color: '#fff',
-          fontSize: '11px',
-          fontWeight: '600',
-          letterSpacing: '0.02em',
-          lineHeight: '1',
-          padding: '6px',
-          cursor: 'pointer',
-          display: 'grid',
-          gap: '6px',
-          width: useIntegratedControls ? '160px' : '194px',
-          textAlign: 'left',
-          boxShadow: '0 6px 20px rgba(0,0,0,0.28)',
-          transition: 'transform 120ms ease, filter 120ms ease, opacity 120ms ease',
-        });
-
-        const preview = document.createElement('img');
-        preview.alt = `Preset ${presetId} preview`;
-        preview.width = previewSize;
-        preview.height = previewSize;
-        preview.loading = 'lazy';
-        // const thumbnailSrc = getEmbeddedPresetThumbnailById(presetId);
-        // if (thumbnailSrc) {
-        //   preview.src = thumbnailSrc;
-        // }
-        Object.assign(preview.style, {
-          width: `${previewSize}px`,
-          height: `${previewSize}px`,
-          objectFit: 'contain',
-          aspectRatio: '1 / 1',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.2)',
-          background:
-            'radial-gradient(circle at 20% 20%, rgba(66,191,255,0.35), rgba(49,129,255,0.2) 35%, rgba(15,20,30,0.9) 70%)',
-          opacity: '0.92',
-        });
-
-        const caption = document.createElement('div');
-        caption.textContent = `Preset ${presetId}`;
-        Object.assign(caption.style, {
-          fontSize: '11px',
-          fontWeight: '700',
-          padding: '0 2px 2px',
-        });
-
-        button.appendChild(preview);
-        button.appendChild(caption);
-        quickPresetPreviewImages.set(presetId, preview);
-
-        button.addEventListener('mouseenter', () => {
-          button.style.transform = 'translateY(-1px)';
-          button.style.filter = 'brightness(1.06)';
-        });
-        button.addEventListener('mouseleave', () => {
-          button.style.transform = 'translateY(0)';
-          button.style.filter = 'brightness(1)';
-        });
-
-        button.addEventListener('click', async () => {
-          setQuickPresetButtonsDisabled(true);
-          const ok = await loadPresetById(presetId);
-          setQuickPresetButtonsDisabled(false);
-          if (ok) {
-            selectedPresetId = presetId;
-            setQuickPresetsVisible(false);
-          }
-        });
-
-        quickPresetHost.appendChild(button);
-
-        return button;
-      });
-
-      // Controls own quick-preset visibility state instead of reading engine.#currentPreset.
-      setQuickPresetsVisible(!selectedPresetId);
-
-      const replaceWithRuntimePresetPreviews = async () => {
-        if (typeof engine.captureThumbnail !== 'function') {
-          console.warn('Engine does not support thumbnail capture, skipping preset preview generation.');
-          return;
-        }
-
-        setEngineLoadingMaskActive(true, 'Loading engine...');
-        setQuickPresetButtonsDisabled(true);
-
-        try {
-          const total = visiblePresetIds.length;
-          for (let index = 0; index < total; index += 1) {
-            const presetId = visiblePresetIds[index];
-            const preset = getEmbeddedPresetById(presetId);
-            const imageEl = quickPresetPreviewImages.get(presetId);
-            if (!preset || !imageEl) {
-              continue;
-            }
-
-            setEngineLoadingMaskActive(true, `Loading engine... (${index + 1}/${total})`);
-            const settleFrames = index < 3 ? 4 : 2;
-            const dataUrl = await engine.captureThumbnail(preset, {
-              settleFrames,
-              width: previewSize,
-              height: previewSize,
-            });
-
-            if (dataUrl) {
-              imageEl.src = dataUrl;
-            }
-          }
-        } finally {
-          setEngineLoadingMaskActive(false);
-          setQuickPresetButtonsDisabled(false);
-        }
-      };
-
-      setTimeout(() => {
-        replaceWithRuntimePresetPreviews().catch(() => {
-          setEngineLoadingMaskActive(false);
-          setQuickPresetButtonsDisabled(false);
-        });
-      }, 120);
-
-      const bindClick = (id, handler) => {
-        const element = document.getElementById(id);
-        if (element) {
-          element.addEventListener('click', handler);
-        }
-      };
-
-      const isPointerInViewport = event => {
-        const rect = renderer.domElement.getBoundingClientRect();
-        return (
-          event.clientX >= rect.left &&
-          event.clientX <= rect.right &&
-          event.clientY >= rect.top &&
-          event.clientY <= rect.bottom
-        );
-      };
-
-      const clearViewportInteractionState = () => {
-        // inputs.currMouse.x = 2;
-        // inputs.currMouse.y = 2;
-        visualizer.intersected = false;
-        visualizer.clickable = false;
-        visualizer.controllingAudio = false;
-        tooltipUI.visible = false;
-      };
-
-      const isPaneOpen = () => Boolean(pane && !pane.hidden);
-
-      const isPointerOverUi = event => {
-        const target = event?.target;
-        if (!(target instanceof Element)) {
-          return false;
-        }
-
-        return Boolean(
-          target.closest('.tp-dfwv')
-          || target.closest('.mage-pane-host')
-          || target.closest('.mage-embedded-presets')
-          || target.closest('.mage-fx-layers-overlay')
-          || target.closest('.mage-fx-studio-overlay')
-          || target.closest('.mage-fx-studio-dock')
-          || target.closest('.mage-scene-camera-dock')
-          || target.closest('.mage-dock-launcher')
-        );
-      };
-
-      const shouldBlockViewportInput = event => isPointerOverUi(event);
-
-      window.addEventListener('wheel', function(event) {
-          if (shouldBlockViewportInput(event)) {
-              clearViewportInteractionState();
-              return;
-          }
-
-          if (!isPointerInViewport(event)) {
-              clearViewportInteractionState();
-              return;
-          }
-
-          if (event.deltaY < 0) {
-              // If the visualizer is clickable and the pointer is currently intersecting it, go to the next shader
-              if (visualizer.clickable && visualizer.intersected) {
-                visualizer.nextShader();
-              }
-          } else if (event.deltaY > 0) {
-              // If the visualizer is clickable and the pointer is currently intersecting it, go to the previous shader
-              if (visualizer.clickable && visualizer.intersected) {
-                visualizer.previousShader();
-              }
-          }
-          // You can also check event.deltaX for horizontal scrolling
-
-          // If you do not want any actual scrolling to occur, you can prevent the default behavior
-          // event.preventDefault(); 
-      }, { passive: false }); // Use passive: false to allow preventDefault()
 
       window.addEventListener('resize', () => {
         if (typeof engine.#_syncViewport === 'function') {
@@ -3849,147 +3887,26 @@ export class MAGEEngine {
         rebuildComposer();
       });
 
-      window.addEventListener('pointermove', event => {
-        if (shouldBlockViewportInput(event)) {
-          clearViewportInteractionState();
-          // state.currMouse.x = 2;
-          // state.currMouse.y = 2;
-          return;
-        }
+      if (engine.#windowInputBridge) {
+        engine.#windowInputBridge.onToggleUI = () => {
+          hideQuickPresets();
+          toggleUI();
+        };
+        engine.#windowInputBridge.onHideQuickPresets = () => {
+          hideQuickPresets();
+        };
+        engine.#windowInputBridge.onUpdateTooltip = ({ visible, x, y }) => {
+          tooltipUI.visible = visible;
+          tooltipUI.x = x;
+          tooltipUI.y = y;
+        };
+      }
 
-        const rect = renderer.domElement.getBoundingClientRect();
-        const relX = (event.clientX - rect.left) / rect.width;
-        const relY = (event.clientY - rect.top) / rect.height;
-
-        const inside = relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1;
-
-        if (!inside) {
-          clearViewportInteractionState();
-          // state.currMouse.x = 2;
-          // state.currMouse.y = 2;
-          return;
-        }
-
-        // Raycast input (NDC)
-        inputs.currMouse.x = relX * 2 - 1;
-        inputs.currMouse.y = -relY * 2 + 1;
-
-        // Animation/audio input source
-        if (visualizer.controllingAudio) {
-          state.currMouse.x = relX * 2 - 1;
-          state.currMouse.y = -relY * 2 + 1;
-        } else {
-          state.currMouse.x = relX / 4 - 1;
-          state.currMouse.y = -relY / 4 + 1;
-        }
-
-        tooltipUI.x = event.clientX;
-        tooltipUI.y = event.clientY;
-        tooltipUI.visible = visualizer.clickable && visualizer.render_tooltips;
-      });
-
-      window.addEventListener('pointerdown', event => {
-        if (shouldBlockViewportInput(event)) {
-          clearViewportInteractionState();
-          state.currPointerDown = 0.0;
-          return;
-        }
-
-        if (!isPointerInViewport(event)) {
-          clearViewportInteractionState();
-          return;
-        }
-
-        state.currPointerDown = 1.0;
-
-        if (!visualizer.clickable || !visualizer.intersected) {
-          return;
-        }
-
-        // stop threejs movement controls while interacting with visualizer
-        //controls.enabled = false;
-        
-        // if (event.button === 1) {
-        //   visualizer.controllingAudio = true;
-        // }
-      });
-
-      window.addEventListener('pointerup', event => {
-        // Always allow right-click toggle on the viewport, even when pane is open.
-        if (event.button === 2) {
-          if (isPointerInViewport(event) && !isPointerOverUi(event)) {
-            setQuickPresetsVisible(false);
-            toggleUI();
-          }
-          clearViewportInteractionState();
-          state.currPointerDown = 0.0;
-          return;
-        }
-
-        if (shouldBlockViewportInput(event)) {
-          clearViewportInteractionState();
-          state.currPointerDown = 0.0;
-          return;
-        }
-
-        if (!isPointerInViewport(event)) {
-          clearViewportInteractionState();
-          return;
-        }
-
-        // stop controlling audio on pointer release
-        visualizer.controllingAudio = false;
-
-        // re-enable threejs movement controls when not interacting with visualizer
-        controls.enabled = true;
-
-        // if (audio && audio.setPlaybackRate) {
-        //   audio.setPlaybackRate(1);
-        // }
-        // if (reversedAudio && reversedAudio.pause) {
-        //   reversedAudio.pause();
-        // }
-
-        // Reset pointer down state with a slight delay to allow for any interactions that check this state on pointer up.
-        state.currPointerDown = 0.0 + 1 * state.pointerDownMultiplier;
-
-        // Only toggle play/pause on middle click release while pointer is intersecting visualizer and it's clickable.
-        // This prevents conflicts with right click (context menu) interactions and ensures that play/pause is only 
-        // toggled when the user is actively interacting with the visualizer.
-        if (!visualizer.intersected || !visualizer.clickable) {
-          return;
-        }
-
-        // if (event.button === 0) {
-        //   if (!audio || !audio.isPlaying) {
-        //     engine.play();
-        //   } else {
-        //     engine.pause();
-        //   }
-        // }
-
-        // Regenerate visualizer on left click release while intersecting visualizer and it's clickable
-        if (event.button === 0) {
-          engine.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false });
-          setQuickPresetsVisible(false);
-        }
-
-        // Open shaders context menu on middle click release while intersecting visualizer and it's clickable 
-        if (event.button === 1) {
-          // if (reversedAudio && reversedAudio.pause) {
-          //   reversedAudio.pause();
-          // }
-          // engine.play();
-
-          // open a selection window showing active shaders
-          // openShaderSelectionWindow(engine.#visualizer);
-        }
-
-      });
-
-      renderer.domElement.addEventListener('pointerleave', () => {
-        clearViewportInteractionState();
-      });
+      if (engine.#externalInputBridge) {
+        engine.#externalInputBridge.onToggleUI = engine.#windowInputBridge?.onToggleUI || null;
+        engine.#externalInputBridge.onHideQuickPresets = engine.#windowInputBridge?.onHideQuickPresets || null;
+        engine.#externalInputBridge.onUpdateTooltip = engine.#windowInputBridge?.onUpdateTooltip || null;
+      }
     };
 
     // const openShaderSelectionWindow = visualizer => {
@@ -4145,6 +4062,44 @@ export class MAGEEngine {
     }
     
     this.#controlPanel = pane;
+  }
+
+  openPresetDock() {
+    if (!this.#controlSettings.active) {
+      this.initControls();
+    }
+    if (!this.#controlSettings.active) {
+      return;
+    }
+    if (this.#presetDock) {
+      this.#presetDock.show();
+      return;
+    }
+    
+    this.#presetDock = new MAGEPresetDock(
+      this, 
+      this.#scene,
+      this.#renderer,
+      this.#camera,
+      this.#controls,
+      this.#canvas,
+      this.#controlSettings,
+    );
+
+    this.#presetDock.initialize();
+
+    this.#presetDock.show();
+
+    const handlePresetDockLayoutChange = () => {
+        const { quickPresetHost } = this.#presetDock;
+        if (quickPresetHost.style.display !== 'none') {
+          this.#presetDock.positionPresetDock();
+        }
+    };
+    window.addEventListener('resize', handlePresetDockLayoutChange);
+    window.addEventListener('scroll', handlePresetDockLayoutChange, true);
+
+
   }
 }
 

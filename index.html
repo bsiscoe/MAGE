@@ -157,6 +157,7 @@ textarea {
           <button id="takeSnapshot">Take snapshot (thumbnail)</button>
           <button id="presetToThumbnail">to Preset thumbnail</button>
           <button id="disposeBtn">dispose()</button>
+          <button id="openPresetDock">Open preset dock</button>
         </div>
       </div>
 
@@ -256,6 +257,15 @@ textarea {
         document.getElementById('disposeBtn').addEventListener('click', () => {
         engine.dispose();
         log('dispose() called');
+        });
+
+        document.getElementById('openPresetDock').addEventListener('click', () => {
+            if (typeof engine.openPresetDock === 'function') {
+                engine.openPresetDock();
+                log('openPresetDock() called');
+            } else {
+                log('openPresetDock() not available on engine');
+            }
         });
 
         document.getElementById('presetToThumbnail').addEventListener('click', () => {
