@@ -1,4 +1,6 @@
 import { generateshaderparkcode } from "./generateshaderparkcode";
+import { BoxGeometry } from 'three';
+import { createSculptureWithGeometry } from "shader-park-core";
 
 export class MAGEVisualizer {
   constructor(engine) {
@@ -8,7 +10,6 @@ export class MAGEVisualizer {
     this.shaders = [];
     this.skyboxPreset = null;
     this.mesh = null;
-    this.shader = null;
     this.scale = 10.0;
     this.intersected = false;
     this.clickable = false;
@@ -32,12 +33,9 @@ export class MAGEVisualizer {
    * if loading failed due to invalid input.
    */
 
-  load({ shader = null, addToHistory = false, clearHistory = false } = {}) {
+  load({ shader = null, addToHistory = true, clearHistory = false } = {}) {
     const engine = this.engine;
     if (engine.log) console.log('Initializing MAGEVisualizer with engine instance:', engine);
-
-    // Remove old mesh before creating a new sculpture.
-    engine.removeMesh(this.mesh);
 
     // If shader input is missing/invalid, generate one.
     let finalShaderCode = null;
@@ -78,9 +76,21 @@ export class MAGEVisualizer {
     }
 
     if (engine.log) console.log('Loaded visualizer with shader:', finalShaderCode);
-    this.shader = finalShaderCode;
-    engine.createMesh(this);
-    return finalShaderCode;
+    this.createMesh(finalShaderCode);
+  }
+
+  createMesh(shaderCode) {
+    const { state } = this.engine.getEngineFields();
+    const geometry = new BoxGeometry(20000, 20000, 20000);
+    this.mesh = createSculptureWithGeometry(geometry, shaderCode, () => {
+          return {
+            time: state.time,
+            size: state.size,
+            pointerDown: state.pointerDown,
+            mouse: state.mouse,
+            _scale: this.scale,
+          };
+    });
   }
 
   previousShader() {

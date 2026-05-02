@@ -16,94 +16,189 @@
 - **Artists**: The generative and artistic aspects of MAGE will continue to improve (better generation logic, scene transitions, and video editing/rendering features are planned for the future)
 - **Developers**: The code for MAGE is completely open source and I encourage anyone with the creativity and know how to iterate upon its generation logic or more with their own ideas.
 
-## How Do I Use MAGE?
+## Getting Started
+
+### Using the Live Site
+
 [MAGE](https://bsiscoe.github.io/MAGE) is live on GitHub Pages and runs as a static HTML site. Its use is quite simple and I have provided a video guide to explain its key features and core concept in more detail.
 [![Video Title](https://img.youtube.com/vi/WGWesdaAZIg/0.jpg)](https://www.youtube.com/watch?v=WGWesdaAZIg)
 
-## Embedding-Safe Input Assignment
+### Using as an npm Package
 
-MAGE now supports a survivable input mode for complex host apps (React, layered DOM, embedded layouts). The default behavior is unchanged: if you do nothing, MAGE still listens to window pointer and wheel events internally.
+To use MAGE as a library in your own project:
 
-Use these APIs when you want the host app to be the source of truth for input:
+```bash
+npm install @notrac/mage
+```
 
-- `setInputState(inputState)`
-- `attachInputSource(inputSource)`
-- `detachInputSource()`
-
-`setInputState` lets you push one-off input snapshots.
+#### Quick Start
 
 ```javascript
-engine.setInputState({
-	clientX: event.clientX,
-	clientY: event.clientY,
-	pointerOverUi: false,
-	currPointerDown: 1.0,
-	requestWheelDirection: 0,
-	requestToggleUI: false,
-	requestResetVisualizer: false,
+import { initMAGE } from '@notrac/mage';
+
+const engine = initMAGE({
+	canvas: document.getElementById('myCanvas'),
+	withControls: { active: true, integrated: false },
+	autoStart: true,
+	log: false
+});
+
+engine.start();
+engine.fx.setBloomEnabled(true);
+```
+
+## Public API
+
+The generated declaration file is [dist/mage-engine.d.ts](dist/mage-engine.d.ts). The public API below matches that surface.
+
+### `initMAGE(options?)`
+
+Initializes and returns a `MAGEEngineAPI` instance.
+
+**Options:**
+- `canvas?: HTMLCanvasElement` - Target canvas element for rendering.
+- `withControls?: { active?: boolean; integrated?: boolean }` - Enables controls. Defaults to `{ active: true, integrated: false }`.
+- `autoStart?: boolean` - Starts rendering immediately. Defaults to `false`.
+- `log?: boolean` - Enables console logging. Defaults to `false`.
+
+### Engine API
+
+`MAGEEngineAPI` exposes the runtime engine, audio, preset, capture, and integration helpers.
+
+#### Lifecycle and host integration
+
+- `start()`
+- `dispose()`
+- `isRunning()`
+- `refreshFx()`
+- `initControls(inputSource?)`
+- `showViewportMessage(message, durationMs?)`
+- `setRandomSkybox()`
+- `showIntegratedControls()`
+- `hideIntegratedControls()`
+- `openPresetDock()`
+- `getEngineFields()`
+
+#### Audio
+
+- `loadAudio(filePath: string)`
+- `isAudioLoaded()`
+- `play()`
+- `pause()`
+- `seek(time: number)`
+- `scrubAudio(time: number)`
+- `getAudioTime()`
+- `getAudioDuration()`
+
+#### Presets, capture, and canvas
+
+- `loadPreset(preset: MAGEPreset)`
+- `toPreset()`
+- `captureFramePreview(options?)`
+- `captureThumbnail(preset, options?)`
+- `swapCanvas(canvas: HTMLCanvasElement)`
+- `toggleFullscreen()`
+
+#### Input routing
+
+- `setInputState(inputState?)`
+- `attachInputSource(inputSource?)`
+- `detachInputSource()`
+
+#### Example Usage
+
+```javascript
+import { initMAGE } from '@notrac/mage';
+
+const engine = initMAGE({
+	canvas: document.getElementById('visualizer'),
+	withControls: { active: true, integrated: false },
+	autoStart: true,
+});
+
+await engine.loadAudio('/path/to/music.mp3');
+engine.play();
+engine.fx.setBloomEnabled(true);
+
+engine.loadPreset({
+	// preset configuration object
+});
+
+const preset = engine.toPreset();
+const thumbnail = await engine.captureThumbnail(preset, {
+	width: 224,
+	height: 224,
+	type: 'image/png',
+	quality: 0.84,
+	settleFrames: 2,
 });
 ```
 
-`attachInputSource` lets you provide a persistent adapter object. Supported adapter shape:
+### Effect API
 
-- `getState(): object` (optional)
-- `subscribe(handler): unsubscribe` (optional)
+`engine.fx` exposes the post-processing controls.
 
-```javascript
-const inputSource = {
-	getState() {
-		return { clientX: 0, clientY: 0, pointerOverUi: false, currPointerDown: 0 };
-	},
-	subscribe(handler) {
-		const onMove = event => {
-			handler({
-				clientX: event.clientX,
-				clientY: event.clientY,
-				pointerOverUi: false,
-			});
-		};
+#### Bloom
 
-		const onDown = () => handler({ currPointerDown: 1.0 });
-		const onUp = () => handler({ currPointerDown: 0.0 });
+- `getBloomEnabled()` / `setBloomEnabled(value)`
+- `getBloomStrength()` / `setBloomStrength(value)`
+- `getBloomRadius()` / `setBloomRadius(value)`
+- `getBloomThreshold()` / `setBloomThreshold(value)`
 
-		window.addEventListener('pointermove', onMove, { capture: true });
-		window.addEventListener('pointerdown', onDown, { capture: true });
-		window.addEventListener('pointerup', onUp, { capture: true });
+#### RGB Shift
 
-		return () => {
-			window.removeEventListener('pointermove', onMove, { capture: true });
-			window.removeEventListener('pointerdown', onDown, { capture: true });
-			window.removeEventListener('pointerup', onUp, { capture: true });
-		};
-	},
-};
+- `getRGBShiftEnabled()` / `setRGBShiftEnabled(value)`
+- `getRGBShiftAmount()` / `setRGBShiftAmount(value)`
+- `getRGBShiftAngle()` / `setRGBShiftAngle(value)`
 
-engine.attachInputSource(inputSource);
-```
+#### After Image
 
-To return to built-in window listeners:
+- `getAfterImageEnabled()` / `setAfterImageEnabled(value)`
+- `getAfterImageDamp()` / `setAfterImageDamp(value)`
 
-```javascript
-engine.detachInputSource();
-```
+#### Colorify
 
-Input state keys accepted by MAGE:
+- `getColorifyEnabled()` / `setColorifyEnabled(value)`
+- `getColorifyColor()` / `setColorifyColor(hex)`
 
-- `clientX: number`
-- `clientY: number`
-- `pointerOverUi: boolean`
-- `currPointerDown: number`
-- `requestWheelDirection: -1 | 0 | 1`
-- `requestToggleUI: boolean`
-- `requestResetVisualizer: boolean`
-- `requestNextShader: boolean`
-- `requestPreviousShader: boolean`
+#### Kaleid
+
+- `getKaleidEnabled()` / `setKaleidEnabled(value)`
+- `getKaleidSides()` / `setKaleidSides(value)`
+- `getKaleidAngle()` / `setKaleidAngle(value)`
+
+#### Tone Mapping
+
+- `getToneMappingMethod()` / `setToneMappingMethod(method)`
+- `getToneMappingExposure()` / `setToneMappingExposure(value)`
+
+#### Pass Toggles
+
+- `getGlitchEnabled()` / `setGlitchEnabled(value)`
+- `getDotEnabled()` / `setDotEnabled(value)`
+- `getTechnicolorEnabled()` / `setTechnicolorEnabled(value)`
+- `getLuminosityEnabled()` / `setLuminosityEnabled(value)`
+- `getSobelEnabled()` / `setSobelEnabled(value)`
+- `getHalftoneEnabled()` / `setHalftoneEnabled(value)`
+- `getGammaCorrectionEnabled()` / `setGammaCorrectionEnabled(value)`
+- `getCopyShaderEnabled()` / `setCopyShaderEnabled(value)`
+- `getBleachBypassEnabled()` / `setBleachBypassEnabled(value)`
+- `getToonEnabled()` / `setToonEnabled(value)`
+- `getOutputPassEnabled()` / `setOutputPassEnabled(value)`
+
+#### Pass Ordering and helpers
+
+- `getPassOrder()`
+- `getDefaultPassOrder()`
+- `setPassOrder(order)`
+- `movePass(passId, direction)`
+- `randomizeSettings()`
+- `applyPostProcessing(scene, renderer, camera, composer)`
+- `toggleUI()`
 
 ## Performance
-Some of the shaders generated by MAGE can be VERY demanding. I am running an RTX 4070 Super, and I still get around 40-50 fps when the generated shader is too complex.
-Therefore I would recommend a pretty beefy GPU to run this program. While I have optimized it to the best of my ability and patched all memory leaks (I hope...) there is still some unoptimized logic that can be generated within the shader code.
-There is much improvments to be made in future updates, so the requirements may or may not be lowered in the future. This also means the app will barely run in mobile. On my iPhone 15, I averaged 10 fps with just about any shader I generated.
-Future versions will definitely have specific presets tailored for mobile, and I will have to update the shader generation to account for weaker specs. You can still generate and save shaders just fine on mobile though, so feel free to do that!
+Some of the shaders generated by MAGE can be VERY demanding.
+There is much improvments to be made in future updates, so the requirements may or may not be lowered in the future. 
 
 ## Technologies Used
 MAGE is primarily made in Javascript and leverages the following libraries:
@@ -173,3 +268,4 @@ This project is fully open-source. Edit, change, and share as you see fit.
 ---
 
 Stay tuned for updates, including even more video demos showcasing MAGE in action!
+
