@@ -3,6 +3,7 @@ import { generateshaderparkcode } from "./generateshaderparkcode";
 export class MAGEVisualizer {
   constructor(engine) {
     this.engine = engine;
+    this.seed = 0;
     this.shaderIndex = -1;
     this.shaders = [];
     this.skyboxPreset = null;
@@ -31,16 +32,16 @@ export class MAGEVisualizer {
    * if loading failed due to invalid input.
    */
 
-  load(options = { shader: null, addToHistory: false, clearHistory: false }) {
+  load({ shader = null, addToHistory = false, clearHistory = false } = {}) {
     const engine = this.engine;
-    if (engine.log) console.log('Loading visualizer... ');
+    if (engine.log) console.log('Initializing MAGEVisualizer with engine instance:', engine);
 
     // Remove old mesh before creating a new sculpture.
     engine.removeMesh(this.mesh);
 
     // If shader input is missing/invalid, generate one.
     let finalShaderCode = null;
-    let shaderCode = options.shader;
+    let shaderCode = shader;
     if (typeof shaderCode === 'string') {
       finalShaderCode = shaderCode;
     } else if (
@@ -49,18 +50,24 @@ export class MAGEVisualizer {
       typeof shaderCode.shader === 'string'
     ) {
       finalShaderCode = shaderCode.shader;
+    } else if (
+      shaderCode &&
+      typeof shaderCode === 'object' &&
+      typeof shaderCode.code === 'string'
+    ) {
+      finalShaderCode = shaderCode.code;
     } else {
-      finalShaderCode = generateshaderparkcode('generator_v1.1');
+      finalShaderCode = generateshaderparkcode(this, 'generator_v1.5_light');
     }
     if (!finalShaderCode) {
       if (engine.log) console.warn('Invalid shader code input; failed to load visualizer.', { shaderCode });
       return null;
     }
-    if (options.clearHistory) {
+    if (clearHistory) {
       this.shaders = [];
       this.shaderIndex = -1;
     }
-    if (options.addToHistory) {
+    if (addToHistory) {
       this.shaders.push({
         //id: MAGEEngine.#_idFromShaderCode(finalShaderCode),
         shader: finalShaderCode,

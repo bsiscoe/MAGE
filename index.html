@@ -158,6 +158,7 @@ textarea {
           <button id="presetToThumbnail">to Preset thumbnail</button>
           <button id="disposeBtn">dispose()</button>
           <button id="openPresetDock">Open preset dock</button>
+          <button id="testFx">Test getFxControls()</button>
         </div>
       </div>
 
@@ -218,24 +219,24 @@ textarea {
 
         const savedPresetGallery = document.getElementById('savedPresetGallery');
         const renderSavedPresetGallery = () => {
-          const presets = typeof engine.getSavedPresets === 'function' ? engine.getSavedPresets() : [];
-          if (!Array.isArray(presets) || presets.length === 0) {
-            savedPresetGallery.innerHTML = '<div class="savedPresetCard"><div class="savedPresetMeta">No presets created yet.</div></div>';
-            return;
-          }
+          // const presets = typeof engine.getSavedPresets === 'function' ? engine.getSavedPresets() : [];
+          // if (!Array.isArray(presets) || presets.length === 0) {
+          //   savedPresetGallery.innerHTML = '<div class="savedPresetCard"><div class="savedPresetMeta">No presets created yet.</div></div>';
+          //   return;
+          // }
 
-          savedPresetGallery.innerHTML = presets
-            .map((preset, index) => {
-              const when = preset._savedAt ? new Date(preset._savedAt).toLocaleTimeString() : 'unknown';
-              const thumb = typeof preset.thumbnailDataUrl === 'string' ? `<img src="${preset.thumbnailDataUrl}" alt="Preset ${index + 1} thumbnail" />` : '';
-              return `
-                <article class="savedPresetCard">
-                  <div class="savedPresetMeta">Preset ${index + 1} • ${when}</div>
-                  ${thumb}
-                </article>
-              `;
-            })
-            .join('');
+          // savedPresetGallery.innerHTML = presets
+          //   .map((preset, index) => {
+          //     const when = preset._savedAt ? new Date(preset._savedAt).toLocaleTimeString() : 'unknown';
+          //     const thumb = typeof preset.thumbnailDataUrl === 'string' ? `<img src="${preset.thumbnailDataUrl}" alt="Preset ${index + 1} thumbnail" />` : '';
+          //     return `
+          //       <article class="savedPresetCard">
+          //         <div class="savedPresetMeta">Preset ${index + 1} • ${when}</div>
+          //         ${thumb}
+          //       </article>
+          //     `;
+          //   })
+          //   .join('');
         };
 
         const container = document.getElementById('mage');
@@ -247,6 +248,17 @@ textarea {
           log: true,
           autoStart: false,
           withControls: { active: false, integrated: true },
+        });
+
+        document.getElementById('testFx').addEventListener('click', () => {
+          const controls = engine.fx;  
+          if (controls) {
+                controls.setBloomEnabled(true);
+                const bloomIntensity = controls.getBloomStrength();
+                log(`getFxControls() test: Bloom intensity is ${bloomIntensity}`);
+            } else {
+                log('getFxControls() not available');
+            }
         });
 
         document.getElementById('btnStart').addEventListener('click', () => {
@@ -262,9 +274,9 @@ textarea {
         document.getElementById('openPresetDock').addEventListener('click', () => {
             if (typeof engine.openPresetDock === 'function') {
                 engine.openPresetDock();
-                log('openPresetDock() called');
+                log('openDefaultPresetDock() called');
             } else {
-                log('openPresetDock() not available on engine');
+                log('openDefaultPresetDock() not available on engine');
             }
         });
 

@@ -94,6 +94,124 @@ export interface InputState {
   requestWheelDirection?: -1 | 0 | 1 | number;
 }
 
+/** 
+ * MAGEFxPassOrder defines the valid pass names for the post-processing effects in the MAGE engine. 
+ * It is a union type that includes all the possible pass names that can be used to specify the order 
+ * of post-processing effects applied to the visual output. The valid pass names include:
+ * - 'glitchPass'
+ * - 'bloom'
+ * - 'RGBShift'
+ * - 'dotShader'
+ * - 'technicolorShader'
+ * - 'luminosityShader'
+ * - 'afterImagePass'
+ * - 'sobelShader'
+ * - 'colorifyShader'
+ * - 'halftonePass'
+ * - 'gammaCorrectionShader'
+ * - 'kaleidoShader'
+ * - 'copyShader'
+ * - 'bleachBypassShader'
+ * - 'toonShader'
+ * - 'outputPass'
+ * By defining MAGEFxPassOrder as a union of string literals, we can ensure that only valid pass names 
+ * are used when specifying the order of post-processing effects in the MAGE engine. This helps to prevent 
+ * errors and ensures that the engine can correctly apply the specified effects in the desired order.
+*/
+type MAGEFxPass = 
+  | 'glitchPass' | 'bloom' | 'RGBShift' | 'dotShader' 
+  | 'technicolorShader' | 'luminosityShader' | 'afterImagePass' 
+  | 'sobelShader' | 'colorifyShader' | 'halftonePass' 
+  | 'gammaCorrectionShader' | 'kaleidoShader' | 'copyShader' 
+  | 'bleachBypassShader' | 'toonShader';
+
+export type MAGEFxPassOrder = [...MAGEFxPass[], 'outputPass'];
+
+/** 
+ * MAGEFxAPI provides a set of methods for controlling the effects in the MAGE engine.
+ * @description This interface allows users to get/set effect settings programmatically.
+ * @example
+ * engine.effectControls.setBloomEnabled(true);
+ * engine.effectControls.setBloomStrength(1.5);
+ * const isBloomEnabled = engine.effectControls.getBloomEnabled();
+ */
+export interface MAGEFxAPI {
+  // Bloom Controls
+  getBloomEnabled(): boolean;
+  setBloomEnabled(value: boolean): void;
+  getBloomStrength(): number;
+  setBloomStrength(value: number): void;
+  getBloomRadius(): number;
+  setBloomRadius(value: number): void;
+  getBloomThreshold(): number;
+  setBloomThreshold(value: number): void;
+  
+  // RGB Shift Controls
+  getRGBShiftEnabled(): boolean;
+  setRGBShiftEnabled(value: boolean): void;
+  getRGBShiftAmount(): number;
+  setRGBShiftAmount(value: number): void;
+  getRGBShiftAngle(): number;
+  setRGBShiftAngle(value: number): void;
+  
+  // After Image Controls
+  getAfterImageEnabled(): boolean;
+  setAfterImageEnabled(value: boolean): void;
+  getAfterImageDamp(): number;
+  setAfterImageDamp(value: number): void;
+  
+  // Colorify Controls
+  getColorifyEnabled(): boolean;
+  setColorifyEnabled(value: boolean): void;
+  getColorifyColor(): number;
+  setColorifyColor(hex: number): void;
+  
+  // Kaleid Controls
+  getKaleidEnabled(): boolean;
+  setKaleidEnabled(value: boolean): void;
+  getKaleidSides(): number;
+  setKaleidSides(value: number): void;
+  getKaleidAngle(): number;
+  setKaleidAngle(value: number): void;
+  
+  // Tone Mapping Controls
+  getToneMappingMethod(): any;
+  setToneMappingMethod(method: any): void;
+  getToneMappingExposure(): number;
+  setToneMappingExposure(value: number): void;
+  
+  // Individual Pass Toggles
+  getGlitchEnabled(): boolean;
+  setGlitchEnabled(value: boolean): void;
+  getDotEnabled(): boolean;
+  setDotEnabled(value: boolean): void;
+  getTechnicolorEnabled(): boolean;
+  setTechnicolorEnabled(value: boolean): void;
+  getLuminosityEnabled(): boolean;
+  setLuminosityEnabled(value: boolean): void;
+  getSobelEnabled(): boolean;
+  setSobelEnabled(value: boolean): void;
+  getHalftoneEnabled(): boolean;
+  setHalftoneEnabled(value: boolean): void;
+  getGammaCorrectionEnabled(): boolean;
+  setGammaCorrectionEnabled(value: boolean): void;
+  getCopyShaderEnabled(): boolean;
+  setCopyShaderEnabled(value: boolean): void;
+  getBleachBypassEnabled(): boolean;
+  setBleachBypassEnabled(value: boolean): void;
+  getToonEnabled(): boolean;
+  setToonEnabled(value: boolean): void;
+  getOutputPassEnabled(): boolean;
+  setOutputPassEnabled(value: boolean): void;
+  
+  // Pass Order
+  getPassOrder(): string[];
+  setPassOrder(order: MAGEFxPassOrder): void;
+  
+  // UI Control
+  toggleUI(): void;
+}
+
 /**
  * InputSource is an optional adapter interface for host-managed input.
  * - getState() provides an initial snapshot.
@@ -120,6 +238,10 @@ export interface MAGEEngineAPI {
    * Starts the MAGE engine, initiating the rendering loop and enabling audio playback.
    */
   start(): void;
+  /** 
+   * Control object for managing post-processing effects in the MAGE engine. Provides methods to get/set effect settings programmatically.
+  */
+  readonly fx: MAGEFxAPI;
   /**
    * Returns the total duration of the loaded audio in seconds. If no audio is loaded, it returns 0.
    */
@@ -232,6 +354,14 @@ export interface MAGEEngineAPI {
    */
   initControls(): void;
   /**
+   * MAGE Fx field provides access to the MAGEFxAPI for controlling post-processing effects.
+   * This field is available if the engine was initialized with withControls.active set to true, 
+   * which enables the creation of UI controls for managing effects. 
+   * The MAGEFxAPI includes methods for getting and setting effect settings programmatically, 
+   * allowing users to control various post-processing effects such as bloom, RGB shift, after image, colorify, kaleid, tone mapping, and individual pass toggles.
+   */
+  readonly fx: MAGEFxAPI;
+  /**
    * Opens the preset dock, which is a user interface component that allows users to browse and select default MAGE presets. 
    * The preset dock is intended as a default method and is not necessarily required for all hosts. It is designed to provide
    * several examples of presets and can be used as a reference for how to implement preset browsing and selection in different
@@ -243,7 +373,15 @@ export interface MAGEEngineAPI {
 
 /**
  * Initializes the MAGE engine with the specified options.
- * @param options The options for initializing the MAGE engine.
+ * @param options - The options for initializing the MAGE engine.
+ * @return An object containing the initialized MAGE engine API for controlling the engine and its features.
+ * @description This function serves as the main entry point for creating and configuring a MAGE engine instance. 
+ * It accepts an optional configuration object that allows users to specify various settings such as the canvas 
+ * element to render into, whether to enable debug logging, whether to include controls, and whether to automatically start the engine. 
+ * The function returns an object that implements the MAGEEngineAPI interface, providing methods for controlling the engine, managing audio,
+ * loading presets, capturing thumbnails, and more. If integrated controls are used, the integrated controls will be initialized with initControls,
+ * and made available for user interaction. If integrated controls are not used, the returned MAGEEngineAPI object will still include an 
+ * initControls method that can be called to initialize the controls separately, and set post processing fx options programatically.
  */
 export declare function initMAGE(options?: {
   canvas?: HTMLCanvasElement;

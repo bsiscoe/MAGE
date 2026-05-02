@@ -120,4 +120,12 @@ export function registerEmbeddedSkybox(presetId, faces) {
   return true;
 }
 
+export function getRandomSkyboxId() {
+  const ids = Object.keys(EMBEDDED_SKYBOXES).map(Number);
+  if (ids.length === 0) {
+    return null;
+  }
+  const randomId = ids[Math.floor(Math.random() * ids.length)];
+  return randomId;
+}
 export { EMBEDDED_SKYBOXES };

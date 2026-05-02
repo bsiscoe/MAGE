@@ -191,6 +191,14 @@ function toModuleSource(embedded) {
     + `  EMBEDDED_SKYBOXES[key] = deepClone(faces);\n`
     + `  return true;\n`
     + `}\n\n`
+    + `export function getRandomSkyboxId() {\n`
+    + `  const ids = Object.keys(EMBEDDED_SKYBOXES).map(Number);\n`
+    + `  if (ids.length === 0) {\n`
+    + `    return null;\n`
+    + `  }\n`
+    + `  const randomId = ids[Math.floor(Math.random() * ids.length)];\n`
+    + `  return randomId;\n`
+    + `}\n`
     + `export { EMBEDDED_SKYBOXES };\n`;
 }
 

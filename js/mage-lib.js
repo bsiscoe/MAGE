@@ -51,6 +51,8 @@ export function initMAGE({ canvas, log = false, withControls = { active: true, i
   // Initialize the MAGE Engine with the provided canvas and configuration options.
   const engine = new MAGEEngine({ canvas, log, withControls, autoStart });
 
+  window.engine = engine; // Expose the engine globally for debugging and external access
+
   // Return the initialized engine and controls (if created) for external use.
   return engine;
 }

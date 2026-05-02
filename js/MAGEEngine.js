@@ -30,11 +30,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { MAGEVisualizer } from './MAGEVisualizer.js';
 import { MAGEPreset } from './MAGEPreset.js';
-import { MAGEEffects } from './MAGEEffects.js';
+import { MAGEEffects } from './MAGEFx.js';
 import { MAGEPresetDock } from './MAGEPresetDock.js';
+import { initControlsUI } from './MAGEFxUI.js';
 
 import { reverseAudioBuffer } from './helpers.js';
-import { getEmbeddedSkyboxFaces, EMBEDDED_SKYBOXES  } from './skyboxes.js';
+import { getEmbeddedSkyboxFaces, getRandomSkyboxId, EMBEDDED_SKYBOXES } from './skyboxes.js';
 
 import { createSculptureWithGeometry } from 'shader-park-core';
 import { generateshaderparkcode } from './generateshaderparkcode.js';
@@ -62,13 +63,13 @@ const MAGE_VERSION = '1.0.0';
  */
 
 export class MAGEEngine {
+  #uiController = null;
+  #engineVersion = MAGE_VERSION;
   #canvas = null;
   #scene = null;
   #renderer = null;
   #composer = null;
   #camera = null;
-  #effects = null;
-  #controlPanel = null;
   #renderTarget = null;
   #rtScene = null;
   #rtCamera = null;
@@ -104,7 +105,6 @@ export class MAGEEngine {
   #viewportWidth = 0;
   #viewportHeight = 0;
   #presetDock = null;
-  #log = false;
   #viewportToast = {
     el: null,
     visible: false,
@@ -112,13 +112,23 @@ export class MAGEEngine {
     durationMs: 1000,
     fadeMs: 700,
   };
+  #tooltipUI = {
+    element: null,
+    visible: false,
+    x: 0,
+    y: 0,
+  };
   #_pendingSkyboxLoad = null;
   constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {} } = {}) {
     // console log version
     if (log) {
-      console.log(`Initializing MAGE Engine v${MAGE_VERSION}...`);
-      this.#log = true;
+      console.log(`Initializing MAGE Engine v${this.#engineVersion}...`);
+      this.log = true;
+    } else {
+      this.log = false;
     }
+
+    this.fx = new MAGEEffects(this);
 
     // Optional HTMLCanvasElement to render into. If not provided, a canvas
     // will be created and appended to document.body, matching current behavior.
@@ -127,7 +137,7 @@ export class MAGEEngine {
       active: Boolean(active),
       integrated: Boolean(integrated)
     };
-    this.#controlPanel = null;
+
     this.#presetDock = null;
 
     // Core Three.js objects
@@ -152,7 +162,6 @@ export class MAGEEngine {
     this.#isReversed = false;
 
     this.#visualizer = new MAGEVisualizer(this);
-    this.#effects = new MAGEEffects();
 
     this.#inputs = {
       currMouse: new Vector3(),
@@ -207,6 +216,9 @@ export class MAGEEngine {
     if (this.#controlSettings.active) {
       this.start();
       this.initControls();
+      if (this.#controlSettings.integrated) {
+        this.showIntegratedControls();
+      }
     } else if (autoStart) {
       this.start();
     }
@@ -231,7 +243,7 @@ export class MAGEEngine {
 
     if (!this.#scene) {
       this.#_createScene();
-      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera);
+      this.#composer = this.fx.applyPostProcessing(this.#scene, this.#renderer, this.#camera);
       this.#_syncSobelResolution();
     }
 
@@ -515,7 +527,7 @@ export class MAGEEngine {
     this.#canvas = newCanvas;
     this._createRenderer();
     if (this.#scene && this.#camera) {
-      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#composer = this.fx.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
       this.#_syncSobelResolution();
     }
   }
@@ -591,45 +603,45 @@ export class MAGEEngine {
         fov: this.#camera?.fov,
       },
       fx: {
-        passOrder: this.#effects.getPassOrder(),
+        passOrder: this.fx.getPassOrder(),
         bloom: {
-          enabled: this.#effects.bloom.enabled,
-          strength: this.#effects.bloom.settings.strength,
-          radius: this.#effects.bloom.settings.radius,
-          threshold: this.#effects.bloom.settings.threshold,
+          enabled: this.fx.bloom.enabled,
+          strength: this.fx.bloom.settings.strength,
+          radius: this.fx.bloom.settings.radius,
+          threshold: this.fx.bloom.settings.threshold,
         },
         toneMapping: {
-          method: this.#effects.toneMapping.method,
+          method: this.fx.toneMapping.method,
           exposure: this.#renderer?.toneMappingExposure,
         },
         passes: {
-          rgbShift: this.#effects.RGBShift.enabled,
-          dot: this.#effects.dotShader.enabled,
-          technicolor: this.#effects.technicolorShader.enabled,
-          luminosity: this.#effects.luminosityShader.enabled,
-          afterImage: this.#effects.afterImagePass.enabled,
-          sobel: this.#effects.sobelShader.enabled,
-          glitch: this.#effects.glitchPass.enabled,
-          colorify: this.#effects.colorifyShader.enabled,
-          halftone: this.#effects.halftonePass.enabled,
-          gammaCorrection: this.#effects.gammaCorrectionShader.enabled,
-          kaleid: this.#effects.kaleidoShader.enabled,
-          outputPass: this.#effects.outputPass.enabled,
+          rgbShift: this.fx.RGBShift.enabled,
+          dot: this.fx.dotShader.enabled,
+          technicolor: this.fx.technicolorShader.enabled,
+          luminosity: this.fx.luminosityShader.enabled,
+          afterImage: this.fx.afterImagePass.enabled,
+          sobel: this.fx.sobelShader.enabled,
+          glitch: this.fx.glitchPass.enabled,
+          colorify: this.fx.colorifyShader.enabled,
+          halftone: this.fx.halftonePass.enabled,
+          gammaCorrection: this.fx.gammaCorrectionShader.enabled,
+          kaleid: this.fx.kaleidoShader.enabled,
+          outputPass: this.fx.outputPass.enabled,
         },
         params: {
           rgbShift: {
-            amount: this.#effects.RGBShift.shader.uniforms.amount.value,
-            angle: this.#effects.RGBShift.shader.uniforms.angle.value,
+            amount: this.fx.RGBShift.shader.uniforms.amount.value,
+            angle: this.fx.RGBShift.shader.uniforms.angle.value,
           },
           afterImage: {
-            damp: this.#effects.afterImagePass.shader.uniforms.damp.value,
+            damp: this.fx.afterImagePass.shader.uniforms.damp.value,
           },
           colorify: {
-            color: this.#effects.colorifyShader.color,
+            color: this.fx.colorifyShader.color,
           },
           kaleid: {
-            sides: this.#effects.kaleidoShader.shader.uniforms.sides.value,
-            angle: this.#effects.kaleidoShader.shader.uniforms.angle.value,
+            sides: this.fx.kaleidoShader.shader.uniforms.sides.value,
+            angle: this.fx.kaleidoShader.shader.uniforms.angle.value,
           },
         },
       },
@@ -637,7 +649,7 @@ export class MAGEEngine {
 
     preset.state = { ...this.#state };
 
-    if (this.#log) {
+    if (this.log) {
       console.log('Generated preset from current state:', preset);
     }
     return preset;
@@ -721,23 +733,6 @@ export class MAGEEngine {
       this.#viewportInputBridge = this.#windowInputBridge;
     }
   }
-
-  // getSavedPresets() {
-  //   return this.savedPresets.map(entry => this.#_safeDeepClone(entry));
-  // }
-
-  // openSavedPresetsWindow() {
-  //   if (typeof window === 'undefined' || typeof window.open !== 'function') {
-  //     return null;
-  //   }
-
-  //   if (!this._presetGalleryWindow || this._presetGalleryWindow.closed) {
-  //     this._presetGalleryWindow = window.open('', 'mage-saved-presets', 'width=560,height=700,resizable=yes,scrollbars=yes');
-  //   }
-
-  //   this.#_renderSavedPresetsWindow();
-  //   return this._presetGalleryWindow;
-  // }
 
 
   /**
@@ -864,7 +859,7 @@ export class MAGEEngine {
       thumbnailEngine.#renderer.setPixelRatio(1);
       thumbnailEngine.#_syncViewport(true);
 
-      thumbnailEngine.#composer = thumbnailEngine.#effects.applyPostProcessing(
+      thumbnailEngine.#composer = thumbnailEngine.fx.applyPostProcessing(
         thumbnailEngine.#scene,
         thumbnailEngine.#renderer,
         thumbnailEngine.#camera,
@@ -913,45 +908,12 @@ export class MAGEEngine {
     }
   }
 
-  // async buildPresetPreviewMap(
-  //   presets,
-  //   {
-  //     getId = preset => preset?.id,
-  //     onProgress = null,
-  //     settleFrames = 2,
-  //     width = 224,
-  //     height = 224,
-  //   } = {},
-  // ) {
-  //   const result = {};
-  //   if (!Array.isArray(presets) || presets.length === 0) {
-  //     return result;
-  //   }
-
-  //   for (let index = 0; index < presets.length; index += 1) {
-  //     const preset = presets[index];
-  //     const id = getId(preset, index);
-  //     if (id === undefined || id === null) {
-  //       continue;
-  //     }
-
-  //     const dataUrl = await this.captureThumbnail(preset, {
-  //       settleFrames,
-  //       width,
-  //       height,
-  //     });
-
-  //     if (dataUrl) {
-  //       result[`${id}`] = dataUrl;
-  //     }
-
-  //     if (typeof onProgress === 'function') {
-  //       onProgress({ index, total: presets.length, id, hasPreview: Boolean(dataUrl) });
-  //     }
-  //   }
-
-  //   return result;
-  // }
+  refreshFx() {
+    if (!this.#scene || !this.#camera || !this.#renderer) {
+      return;
+    }
+    this.#composer = this.fx.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+  }
 
   // Destroys the engine instance and releases resources. After calling this method, the engine should not be used.
 
@@ -1071,10 +1033,6 @@ export class MAGEEngine {
   }
 
   // PRIVATE METHODS
-  #_createControlPanel() {
-    this.#controlPanel = this.initControls();
-  }
-
   #_waitFrames(frameCount = 1) {
     const total = Math.max(1, Number.parseInt(`${frameCount}`, 10) || 1);
     return new Promise(resolve => {
@@ -1140,21 +1098,21 @@ export class MAGEEngine {
       return;
     }
 
-    this.#renderer.toneMapping = this.#effects.toneMapping.method;
+    this.#renderer.toneMapping = this.fx.toneMapping.method;
 
     if (this.#composer) {
-      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#composer = this.fx.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
     }
 
     this.#_syncSobelResolution();
   }
 
   #_syncSobelResolution() {
-    if (!this.#renderer || !this.#effects.sobelShader?.shader?.uniforms?.resolution?.value) {
+    if (!this.#renderer || !this.fx.sobelShader?.shader?.uniforms?.resolution?.value) {
       return;
     }
 
-    const resolution = this.#effects.sobelShader.shader.uniforms.resolution.value;
+    const resolution = this.fx.sobelShader.shader.uniforms.resolution.value;
     const bufferWidth = this.#renderer.domElement?.width || Math.max(1, Math.floor(window.innerWidth * window.devicePixelRatio));
     const bufferHeight = this.#renderer.domElement?.height || Math.max(1, Math.floor(window.innerHeight * window.devicePixelRatio));
     resolution.x = bufferWidth;
@@ -1317,19 +1275,19 @@ export class MAGEEngine {
     }
 
     if (Array.isArray(fx.passOrder)) {
-      this.#effects.setPassOrder(fx.passOrder);
+      this.fx.setPassOrder(fx.passOrder);
     }
 
     if (fx.bloom && typeof fx.bloom === 'object') {
-      if (typeof fx.bloom.enabled === 'boolean') this.#effects.bloom.enabled = fx.bloom.enabled;
-      if (typeof fx.bloom.strength === 'number' && Number.isFinite(fx.bloom.strength)) this.#effects.bloom.settings.strength = fx.bloom.strength;
-      if (typeof fx.bloom.radius === 'number' && Number.isFinite(fx.bloom.radius)) this.#effects.bloom.settings.radius = fx.bloom.radius;
-      if (typeof fx.bloom.threshold === 'number' && Number.isFinite(fx.bloom.threshold)) this.#effects.bloom.settings.threshold = fx.bloom.threshold;
+      if (typeof fx.bloom.enabled === 'boolean') this.fx.bloom.enabled = fx.bloom.enabled;
+      if (typeof fx.bloom.strength === 'number' && Number.isFinite(fx.bloom.strength)) this.fx.bloom.settings.strength = fx.bloom.strength;
+      if (typeof fx.bloom.radius === 'number' && Number.isFinite(fx.bloom.radius)) this.fx.bloom.settings.radius = fx.bloom.radius;
+      if (typeof fx.bloom.threshold === 'number' && Number.isFinite(fx.bloom.threshold)) this.fx.bloom.settings.threshold = fx.bloom.threshold;
     }
 
     if (fx.toneMapping && typeof fx.toneMapping === 'object') {
       if (typeof fx.toneMapping.method === 'number' && Number.isFinite(fx.toneMapping.method)) {
-        this.#effects.toneMapping.method = fx.toneMapping.method;
+        this.fx.toneMapping.method = fx.toneMapping.method;
         if (this.#renderer) {
           this.#renderer.toneMapping = fx.toneMapping.method;
         }
@@ -1340,50 +1298,50 @@ export class MAGEEngine {
     }
 
     if (fx.passes && typeof fx.passes === 'object') {
-      if (typeof fx.passes.rgbShift === 'boolean') this.#effects.RGBShift.enabled = fx.passes.rgbShift;
-      if (typeof fx.passes.dot === 'boolean') this.#effects.dotShader.enabled = fx.passes.dot;
-      if (typeof fx.passes.technicolor === 'boolean') this.#effects.technicolorShader.enabled = fx.passes.technicolor;
-      if (typeof fx.passes.luminosity === 'boolean') this.#effects.luminosityShader.enabled = fx.passes.luminosity;
-      if (typeof fx.passes.afterImage === 'boolean') this.#effects.afterImagePass.enabled = fx.passes.afterImage;
-      if (typeof fx.passes.sobel === 'boolean') this.#effects.sobelShader.enabled = fx.passes.sobel;
-      if (typeof fx.passes.glitch === 'boolean') this.#effects.glitchPass.enabled = fx.passes.glitch;
-      if (typeof fx.passes.colorify === 'boolean') this.#effects.colorifyShader.enabled = fx.passes.colorify;
-      if (typeof fx.passes.halftone === 'boolean') this.#effects.halftonePass.enabled = fx.passes.halftone;
-      if (typeof fx.passes.gammaCorrection === 'boolean') this.#effects.gammaCorrectionShader.enabled = fx.passes.gammaCorrection;
-      if (typeof fx.passes.kaleid === 'boolean') this.#effects.kaleidoShader.enabled = fx.passes.kaleid;
-      if (typeof fx.passes.outputPass === 'boolean') this.#effects.outputPass.enabled = fx.passes.outputPass;
+      if (typeof fx.passes.rgbShift === 'boolean') this.fx.RGBShift.enabled = fx.passes.rgbShift;
+      if (typeof fx.passes.dot === 'boolean') this.fx.dotShader.enabled = fx.passes.dot;
+      if (typeof fx.passes.technicolor === 'boolean') this.fx.technicolorShader.enabled = fx.passes.technicolor;
+      if (typeof fx.passes.luminosity === 'boolean') this.fx.luminosityShader.enabled = fx.passes.luminosity;
+      if (typeof fx.passes.afterImage === 'boolean') this.fx.afterImagePass.enabled = fx.passes.afterImage;
+      if (typeof fx.passes.sobel === 'boolean') this.fx.sobelShader.enabled = fx.passes.sobel;
+      if (typeof fx.passes.glitch === 'boolean') this.fx.glitchPass.enabled = fx.passes.glitch;
+      if (typeof fx.passes.colorify === 'boolean') this.fx.colorifyShader.enabled = fx.passes.colorify;
+      if (typeof fx.passes.halftone === 'boolean') this.fx.halftonePass.enabled = fx.passes.halftone;
+      if (typeof fx.passes.gammaCorrection === 'boolean') this.fx.gammaCorrectionShader.enabled = fx.passes.gammaCorrection;
+      if (typeof fx.passes.kaleid === 'boolean') this.fx.kaleidoShader.enabled = fx.passes.kaleid;
+      if (typeof fx.passes.outputPass === 'boolean') this.fx.outputPass.enabled = fx.passes.outputPass;
     }
 
     if (fx.params && typeof fx.params === 'object') {
       if (fx.params.rgbShift && typeof fx.params.rgbShift === 'object') {
         if (typeof fx.params.rgbShift.amount === 'number' && Number.isFinite(fx.params.rgbShift.amount)) {
-          this.#effects.RGBShift.shader.uniforms.amount.value = fx.params.rgbShift.amount;
+          this.fx.RGBShift.shader.uniforms.amount.value = fx.params.rgbShift.amount;
         }
         if (typeof fx.params.rgbShift.angle === 'number' && Number.isFinite(fx.params.rgbShift.angle)) {
-          this.#effects.RGBShift.shader.uniforms.angle.value = fx.params.rgbShift.angle;
+          this.fx.RGBShift.shader.uniforms.angle.value = fx.params.rgbShift.angle;
         }
       }
 
       if (fx.params.afterImage && typeof fx.params.afterImage === 'object') {
         if (typeof fx.params.afterImage.damp === 'number' && Number.isFinite(fx.params.afterImage.damp)) {
-          this.#effects.afterImagePass.shader.uniforms.damp.value = fx.params.afterImage.damp;
+          this.fx.afterImagePass.shader.uniforms.damp.value = fx.params.afterImage.damp;
         }
       }
 
       if (fx.params.kaleid && typeof fx.params.kaleid === 'object') {
         if (typeof fx.params.kaleid.sides === 'number' && Number.isFinite(fx.params.kaleid.sides)) {
-          this.#effects.kaleidoShader.shader.uniforms.sides.value = fx.params.kaleid.sides;
+          this.fx.kaleidoShader.shader.uniforms.sides.value = fx.params.kaleid.sides;
         }
         if (typeof fx.params.kaleid.angle === 'number' && Number.isFinite(fx.params.kaleid.angle)) {
-          this.#effects.kaleidoShader.shader.uniforms.angle.value = fx.params.kaleid.angle;
+          this.fx.kaleidoShader.shader.uniforms.angle.value = fx.params.kaleid.angle;
         }
       }
 
       if (fx.params.colorify && typeof fx.params.colorify === 'object' && fx.params.colorify.color !== undefined) {
         const colorValue = fx.params.colorify.color;
-        if (this.#effects.colorifyShader.color && typeof this.#effects.colorifyShader.color.set === 'function') {
+        if (this.fx.colorifyShader.color && typeof this.fx.colorifyShader.color.set === 'function') {
           try {
-            this.#effects.colorifyShader.color.set(colorValue);
+            this.fx.colorifyShader.color.set(colorValue);
           } catch {
             // Keep current color if payload is not parseable by three.Color.
           }
@@ -1392,7 +1350,7 @@ export class MAGEEngine {
     }
 
     if (this.#composer) {
-      this.#composer = this.#effects.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
+      this.#composer = this.fx.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
     }
   }
 
@@ -1569,21 +1527,6 @@ export class MAGEEngine {
     }
   }
 
-  #_summarizePresetReport(report) {
-    const parts = [];
-    parts.push(report.applied.length ? `Applied ${report.applied.length} field(s)` : 'Applied no fields');
-    if (report.missing.length) {
-      parts.push(`missing: ${report.missing.join(', ')}`);
-    }
-    if (report.invalid.length) {
-      parts.push(`invalid: ${report.invalid.join(', ')}`);
-    }
-    if (report.warnings.length) {
-      parts.push(`warnings: ${report.warnings.join(', ')}`);
-    }
-    return parts.join(' | ');
-  }
-
   #_resolveSkyboxPath({ type, presetId }) {
     if (type !== 'preset' || typeof presetId !== 'number') {
       // TODO - support custom skybox paths in addition to preset-based ones
@@ -1757,7 +1700,7 @@ export class MAGEEngine {
     this.#renderer.setPixelRatio(window.devicePixelRatio);
     this.#renderer.setClearColor(new Color(1, 1, 1), 0);
     // Match original renderer tone mapping exposure behavior
-    this.#renderer.toneMappingExposure = this.#effects.toneMapping.exposure;
+    this.#renderer.toneMappingExposure = this.fx.toneMapping.exposure;
     this.#renderer.outputColorSpace = SRGBColorSpace;
 
     if (!this.#canvas) {
@@ -1797,7 +1740,7 @@ export class MAGEEngine {
   }
 
   #_loadDefaultVisualizer() {
-    this.#visualizer.load({ shader: generateshaderparkcode('default'), addToHistory: true });
+    this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default'), addToHistory: true });
     this.#_loadSkybox({ type: 'preset', presetId: 6 });
   }
 
@@ -1885,6 +1828,7 @@ export class MAGEEngine {
   }
   /** @internal */
   createMesh(visualizer) {
+    console.log('Creating mesh for visualizer with shader:', visualizer);
     // add shader to geometry
     const geometry = new BoxGeometry(20000, 20000, 20000);
     visualizer.mesh = createSculptureWithGeometry(geometry, visualizer.shader, () => {
@@ -2048,7 +1992,7 @@ export class MAGEEngine {
       onToggleUI: sourceBridge?.onToggleUI || null,
       onHideQuickPresets: sourceBridge?.onHideQuickPresets || null,
       onUpdateTooltip: sourceBridge?.onUpdateTooltip || null,
-      detach() {},
+      detach() { },
     };
   }
 
@@ -2112,23 +2056,23 @@ export class MAGEEngine {
     if (!this.#controlSettings.active) {
       return;
     }
-    
+
     const bridge = this.#viewportInputBridge;
     if (!this.#renderer?.domElement || !this.#camera || !this.#visualizer || !this.#inputs || !this.#controls) {
       return;
     }
 
-    if (!bridge) {
-      // If no bridge, use defaults that allow interaction when pointer is over the canvas
-      const input = this.#_tryToGetInputsFromMouseEvents();
-      this.attachInputSource(input);
-      return;
-    }
+    // if (!bridge) {
+    //   // If no bridge, use defaults that allow interaction when pointer is over the canvas
+    //   if (this.log) console.warn('No input bridge available; falling back to mouse events for viewport interaction.');
+    //   const input = this.#_tryToGetInputsFromMouseEvents();
+    //   this.attachInputSource(input);
+    //   return;
+    // }
 
-    // use easing and linear interpolation to smoothly animate mouse this.#effects
+    // use easing and linear interpolation to smoothly animate mouse this.fx
     this.#state.pointerDown = 0.1 * this.#state.currPointerDown + 0.9 * this.#state.pointerDown;
-    this.#state.mouse.lerp(this.#state.currMouse, 0.05);
-
+    this.#state.mouse.lerp(this.#state.currMouse, 0.05)
     const domElement = this.#renderer.domElement;
     const rect = domElement.getBoundingClientRect();
     const hasPointer = Number.isFinite(bridge.clientX) && Number.isFinite(bridge.clientY);
@@ -2152,14 +2096,14 @@ export class MAGEEngine {
 
       // Animation/audio input source
       if (this.#visualizer.controllingAudio) {
-          this.#state.currMouse.x = relX * 2 - 1;
-          this.#state.currMouse.y = -relY * 2 + 1;
+        this.#state.currMouse.x = relX * 2 - 1;
+        this.#state.currMouse.y = -relY * 2 + 1;
       } else {
-          this.#state.currMouse.x = relX / 4 - 1;
-          this.#state.currMouse.y = -relY / 4 + 1;
+        this.#state.currMouse.x = relX / 4 - 1;
+        this.#state.currMouse.y = -relY / 4 + 1;
       }
 
-      
+
 
       const raycaster = new Raycaster();
       raycaster.setFromCamera(this.#inputs.currMouse, this.#camera);
@@ -2334,7 +2278,7 @@ export class MAGEEngine {
       },
     };
   }
-  
+
   initControls(inputSource = null) {
     if (!this.#isRunning || this.#isDisposed) {
       if (this.log) console.warn('Cannot initialize controls: MAGEEngine is not running or has been disposed.');
@@ -2344,33 +2288,16 @@ export class MAGEEngine {
     // Calling initControls() should fully activate control mode,
     // including bridge-driven interactions (tooltips, click actions, docks).
     this.#controlSettings.active = true;
-    
+
     // enable threejs orbit controls for mouse interaction
     this.#controls.enabled = true;
 
     const engine = this;
-    const scene = engine.#scene;
     const renderer = engine.#renderer;
     const camera = engine.#camera;
     const controls = engine.#controls;
-
-    const host = engine.#canvas?.parentElement || renderer.domElement.parentElement || document.body;
-    // Ensure host can anchor absolutely-positioned children
-    if (getComputedStyle(host).position === 'static') {
-      host.style.position = 'relative';
-    }
-
     const state = engine.#state;
     const visualizer = engine.#visualizer;
-    const inputs = engine.#inputs;
-
-    let composer = engine.#composer;
-    let audio = engine.#audio;
-    let reversedAudio = engine.#reversedAudio;
-    let pane = null;
-    let fxStudioOverlay = null;
-    let sceneCameraDock = null;
-    const useIntegratedControls = Boolean(engine.#controlSettings.integrated);
 
     const createViewportInputBridge = () => {
       const controller = new AbortController();
@@ -2404,16 +2331,16 @@ export class MAGEEngine {
           return false;
         }
 
-        return Boolean(
-          target.closest('.tp-dfwv')
-          || target.closest('.mage-pane-host')
-          || target.closest('.mage-embedded-presets')
-          || target.closest('.mage-fx-layers-overlay')
-          || target.closest('.mage-fx-studio-overlay')
-          || target.closest('.mage-fx-studio-dock')
-          || target.closest('.mage-scene-camera-dock')
-          || target.closest('.mage-dock-launcher')
-        );
+        // return Boolean(
+        //   target.closest('.tp-dfwv')
+        //   || target.closest('.mage-pane-host')
+        //   || target.closest('.mage-embedded-presets')
+        //   || target.closest('.mage-fx-layers-overlay')
+        //   || target.closest('.mage-fx-studio-overlay')
+        //   || target.closest('.mage-fx-studio-dock')
+        //   || target.closest('.mage-scene-camera-dock')
+        //   || target.closest('.mage-dock-launcher')
+        // );
       };
 
       const syncPointer = event => {
@@ -2489,19 +2416,26 @@ export class MAGEEngine {
     engine.#windowInputBridge = createViewportInputBridge();
     if (!engine.#externalInputBridge) {
       engine.#viewportInputBridge = engine.#windowInputBridge;
+    } else {
+      engine.#viewportInputBridge = engine.#externalInputBridge;
     }
 
-    const rebuildComposer = () => {
-      composer = this.#effects.applyPostProcessing(scene, renderer, camera, composer);
-      engine.#composer = composer;
-    };
 
-    const tooltipUI = {
+    // Initialize optional UI layer
+    if (engine.#controlSettings?.integrated !== false) {
+      const uiController = initControlsUI(engine);
+      engine.#uiController = uiController;
+    }
+
+    // replace mouse pointer with control tip UI
+    const previousAfterFrame = engine.#onAfterFrame;
+    this.#tooltipUI = {
+      element: document.createElement('div'),
       visible: false,
       x: 0,
       y: 0,
-      element: document.createElement('div'),
     };
+    const tooltipUI = this.#tooltipUI;
     tooltipUI.element.style.position = 'fixed';
     tooltipUI.element.style.transform = 'translate(-50%, -50%)';
     tooltipUI.element.style.zIndex = '5';
@@ -2510,7 +2444,12 @@ export class MAGEEngine {
     tooltipUI.element.innerHTML = `<img src="${controlTipsImageDataUrl}" alt="controls" />`;
     document.body.appendChild(tooltipUI.element);
 
-    const previousAfterFrame = engine.#onAfterFrame;
+    engine.#viewportInputBridge.onUpdateTooltip = ({ visible, x, y }) => {
+      tooltipUI.visible = Boolean(visible);
+      tooltipUI.x = Number.isFinite(x) ? x : tooltipUI.x;
+      tooltipUI.y = Number.isFinite(y) ? y : tooltipUI.y;
+    };
+
     engine.#onAfterFrame = engineInstance => {
       if (typeof previousAfterFrame === 'function') {
         previousAfterFrame(engineInstance);
@@ -2527,1550 +2466,50 @@ export class MAGEEngine {
         engineInstance.#renderer.domElement.style.cursor = '';
       }
     };
-
-    const randomizeSettings = () => {
-      const randRange = (min, max) => Math.random() * (max - min) + min;
-      const randInt = (min, max) => Math.floor(randRange(min, max + 1));
-      const randBool = (chance = 0.5) => Math.random() < chance;
-
-      // Scene + camera controls
-      state.minimizing_factor = randRange(0.01, 2.0);
-      state.power_factor = randRange(1.0, 10.0);
-      state.pointerDownMultiplier = randRange(0.0, 1.0);
-      state.base_speed = randRange(0.01, 0.9);
-      state.easing_speed = randRange(0.01, 0.9);
-      visualizer.scale = randRange(1.0, 200.0);
-
-      controls.autoRotate = randBool(0.5);
-      controls.autoRotateSpeed = randRange(0.1, 50.0);
-
-      camera.fov = randRange(1.0, 359.0);
-      camera.updateProjectionMatrix();
-
-      state.camTilt = randRange(0.0, 2 * Math.PI);
-      camera.up.set(
-        Math.sin(state.camTilt),
-        Math.cos(state.camTilt),
-        -Math.sin(state.camTilt),
-      );
-
-      const embeddedSkyboxIds = Object.keys(EMBEDDED_SKYBOXES)
-        .map(value => Number.parseInt(value, 10))
-        .filter(Number.isFinite)
-        .sort((a, b) => a - b);
-      if (embeddedSkyboxIds.length > 0) {
-        const skyboxId = embeddedSkyboxIds[randInt(0, embeddedSkyboxIds.length - 1)];
-        visualizer.skyboxPreset = skyboxId;
-        engine.#_loadSkybox({ type: 'preset', presetId: skyboxId });
-      }
-
-      // FX toggles + all adjustable FX parameters
-      this.#effects.bloom.enabled = randBool(0.55);
-      this.#effects.bloom.settings.strength = randRange(0.0, 10.0);
-      this.#effects.bloom.settings.radius = randRange(-10.0, 10.0);
-      this.#effects.bloom.settings.threshold = randRange(0.0, 10.0);
-
-      this.#effects.RGBShift.enabled = randBool(0.4);
-      this.#effects.RGBShift.shader.uniforms.amount.value = randRange(0.0, 0.1);
-      this.#effects.RGBShift.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
-
-      this.#effects.afterImagePass.enabled = randBool(0.35);
-      this.#effects.afterImagePass.shader.uniforms.damp.value = randRange(0.0, 1.0);
-
-      this.#effects.colorifyShader.enabled = randBool(0.35);
-      this.#effects.colorifyShader.color.setHSL(Math.random(), randRange(0.2, 1.0), randRange(0.2, 0.8));
-
-      this.#effects.kaleidoShader.enabled = randBool(0.3);
-      this.#effects.kaleidoShader.shader.uniforms.sides.value = randInt(1, 24);
-      this.#effects.kaleidoShader.shader.uniforms.angle.value = randRange(0.0, 2 * Math.PI);
-
-      this.#effects.glitchPass.enabled = randBool(0.25);
-      this.#effects.dotShader.enabled = randBool(0.25);
-      this.#effects.technicolorShader.enabled = randBool(0.25);
-      this.#effects.luminosityShader.enabled = randBool(0.25);
-      this.#effects.sobelShader.enabled = randBool(0.25);
-      this.#effects.halftonePass.enabled = randBool(0.25);
-      this.#effects.gammaCorrectionShader.enabled = randBool(0.25);
-      this.#effects.copyShader.enabled = randBool(0.2);
-      this.#effects.bleachBypassShader.enabled = randBool(0.2);
-      this.#effects.toonShader.enabled = randBool(0.2);
-
-      const toneMappingMethods = [
-        LinearToneMapping,
-        CineonToneMapping,
-        ACESFilmicToneMapping,
-        NoToneMapping,
-        ReinhardToneMapping,
-        AgXToneMapping,
-        NeutralToneMapping,
-      ];
-      this.#effects.toneMapping.method = toneMappingMethods[randInt(0, toneMappingMethods.length - 1)];
-      renderer.toneMapping = this.#effects.toneMapping.method;
-      renderer.toneMappingExposure = randRange(-500.0, 500.0);
-
-      const currentOrder = this.#effects.getPassOrder();
-      const shuffled = currentOrder.filter(passId => passId !== 'outputPass');
-      for (let i = shuffled.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      this.#effects.setPassOrder([...shuffled, 'outputPass']);
-
-      controls.update();
-      if (pane) {
-        pane.refresh();
-      }
-      fxStudioOverlay?.refresh();
-      sceneCameraDock?.refresh();
-      rebuildComposer();
-    };
-
-    const createFxStudioOverlay = () => {
-      const toneMappingOptions = [
-        { label: 'Linear', value: LinearToneMapping },
-        { label: 'Cineon', value: CineonToneMapping },
-        { label: 'Filmic', value: ACESFilmicToneMapping },
-        { label: 'NoTone', value: NoToneMapping },
-        { label: 'Reinhard', value: ReinhardToneMapping },
-        { label: 'AGX', value: AgXToneMapping },
-        { label: 'Neutral', value: NeutralToneMapping },
-      ];
-
-      const layerLabels = {
-        bloom: 'Bloom',
-        RGBShift: 'RGB Shift',
-        dotShader: 'Dot FX',
-        technicolorShader: 'Technicolor',
-        luminosityShader: 'Luminosity',
-        afterImagePass: 'After Image',
-        sobelShader: 'Sobel',
-        colorifyShader: 'Colorify',
-        halftonePass: 'Halftone',
-        gammaCorrectionShader: 'Gamma Correction',
-        kaleidoShader: 'Kaleid',
-        glitchPass: 'Glitch',
-        copyShader: 'Copy Shader',
-        bleachBypassShader: 'Bleach Bypass',
-        toonShader: 'Toon',
-        outputPass: 'Output Pass',
-      };
-
-      const syncSobelResolution = () => {
-        if (!this.#effects.sobelShader?.shader?.uniforms?.resolution?.value) {
-          return;
-        }
-        const bufferWidth = renderer.domElement.width || window.innerWidth * window.devicePixelRatio;
-        const bufferHeight = renderer.domElement.height || window.innerHeight * window.devicePixelRatio;
-        this.#effects.sobelShader.shader.uniforms.resolution.value.x = bufferWidth;
-        this.#effects.sobelShader.shader.uniforms.resolution.value.y = bufferHeight;
-      };
-
-      const overlay = document.createElement('div');
-      overlay.className = 'mage-fx-studio-dock';
-      Object.assign(overlay.style, {
-        position: 'fixed',
-        zIndex: '40',
-        display: 'none',
-        pointerEvents: 'none',
-      });
-
-      const panel = document.createElement('div');
-      Object.assign(panel.style, {
-        width: '360px',
-        maxHeight: '84vh',
-        overflow: 'auto',
-        padding: '12px',
-        borderRadius: '12px',
-        border: '1px solid rgba(255,255,255,0.2)',
-        background: 'rgba(13, 17, 26, 0.95)',
-        color: '#fff',
-        display: 'grid',
-        gap: '10px',
-        pointerEvents: 'auto',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
-      });
-
-      const title = document.createElement('div');
-      title.textContent = 'FX Studio';
-      Object.assign(title.style, {
-        fontSize: '16px',
-        fontWeight: '700',
-      });
-
-      const hint = document.createElement('div');
-      hint.textContent = 'Drag rows to reorder. Each row combines enable and settings.';
-      Object.assign(hint.style, {
-        fontSize: '12px',
-        opacity: '0.8',
-      });
-
-      const stackSection = document.createElement('div');
-      Object.assign(stackSection.style, {
-        border: '1px solid rgba(255,255,255,0.15)',
-        borderRadius: '10px',
-        padding: '8px',
-        display: 'grid',
-        gap: '8px',
-      });
-
-      const stackTitle = document.createElement('div');
-      stackTitle.textContent = 'Effect Stack';
-      Object.assign(stackTitle.style, {
-        fontSize: '13px',
-        fontWeight: '600',
-      });
-
-      const stackList = document.createElement('div');
-      Object.assign(stackList.style, {
-        display: 'grid',
-        gap: '6px',
-      });
-
-      let draggedLayerId = null;
-
-      const clearDropIndicators = () => {
-        stackList
-          .querySelectorAll('[data-layer-id]')
-          .forEach(rowEl => {
-            rowEl.style.outline = 'none';
-            rowEl.style.background = 'rgba(255,255,255,0.03)';
-          });
-      };
-
-      const addRangeControl = (parent, { label, min, max, step = 0.001, getValue, setValue }) => {
-        const row = document.createElement('label');
-        Object.assign(row.style, {
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: '8px',
-          alignItems: 'center',
-          fontSize: '12px',
-          marginBottom: '5px',
-        });
-
-        const labelEl = document.createElement('span');
-        labelEl.textContent = label;
-
-        const wrap = document.createElement('div');
-        Object.assign(wrap.style, {
-          display: 'grid',
-          gridTemplateColumns: '1fr auto auto',
-          minWidth: '210px',
-          gap: '6px',
-          alignItems: 'center',
-        });
-
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = `${min}`;
-        input.max = `${max}`;
-        input.step = `${step}`;
-
-        const stepText = `${step}`;
-        const decimalPlaces = stepText.includes('.') ? stepText.split('.')[1].length : 0;
-        const formatValue = value => {
-          if (!Number.isFinite(value)) {
-            return `${min}`;
-          }
-          return decimalPlaces > 0 ? value.toFixed(Math.min(6, decimalPlaces)) : `${Math.round(value)}`;
-        };
-
-        const valueEl = document.createElement('input');
-        valueEl.type = 'number';
-        valueEl.min = `${min}`;
-        valueEl.max = `${max}`;
-        valueEl.step = `${step}`;
-        Object.assign(valueEl.style, {
-          width: '82px',
-          textAlign: 'right',
-          fontVariantNumeric: 'tabular-nums',
-          background: 'rgba(0,0,0,0.5)',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.3)',
-          borderRadius: '4px',
-          padding: '2px 4px',
-        });
-
-        const clamp = value => Math.max(min, Math.min(max, value));
-
-        const sync = () => {
-          const value = Number(getValue());
-          const normalized = Number.isFinite(value) ? clamp(value) : min;
-          input.value = `${normalized}`;
-          valueEl.value = formatValue(normalized);
-        };
-
-        input.addEventListener('input', () => {
-          const value = clamp(Number.parseFloat(input.value));
-          setValue(value);
-          valueEl.value = formatValue(value);
-          rebuildComposer();
-        });
-
-        valueEl.addEventListener('change', () => {
-          const parsed = Number.parseFloat(valueEl.value);
-          if (!Number.isFinite(parsed)) {
-            sync();
-            return;
-          }
-          const value = clamp(parsed);
-          setValue(value);
-          input.value = `${value}`;
-          valueEl.value = formatValue(value);
-          rebuildComposer();
-        });
-
-        sync();
-        wrap.appendChild(input);
-        wrap.appendChild(valueEl);
-        row.appendChild(labelEl);
-        row.appendChild(wrap);
-        parent.appendChild(row);
-      };
-
-      const addColorControl = (parent, { label, getValue, setValue }) => {
-        const row = document.createElement('label');
-        Object.assign(row.style, {
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: '8px',
-          alignItems: 'center',
-          fontSize: '12px',
-          marginBottom: '5px',
-        });
-
-        const labelEl = document.createElement('span');
-        labelEl.textContent = label;
-        const input = document.createElement('input');
-        input.type = 'color';
-        input.value = getValue();
-        Object.assign(input.style, {
-          width: '40px',
-          height: '22px',
-          border: 'none',
-          background: 'transparent',
-        });
-
-        input.addEventListener('input', () => {
-          setValue(input.value);
-          rebuildComposer();
-        });
-
-        row.appendChild(labelEl);
-        row.appendChild(input);
-        parent.appendChild(row);
-      };
-
-      const addToneMappingControl = parent => {
-        const row = document.createElement('label');
-        Object.assign(row.style, {
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: '8px',
-          alignItems: 'center',
-          fontSize: '12px',
-          marginBottom: '5px',
-        });
-
-        const labelEl = document.createElement('span');
-        labelEl.textContent = 'Tone Mapping';
-
-        const select = document.createElement('select');
-        Object.assign(select.style, {
-          minWidth: '150px',
-          background: 'rgba(0,0,0,0.5)',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.3)',
-          borderRadius: '6px',
-          padding: '4px 6px',
-        });
-
-        toneMappingOptions.forEach(option => {
-          const el = document.createElement('option');
-          el.value = `${option.value}`;
-          el.textContent = option.label;
-          select.appendChild(el);
-        });
-
-        select.value = `${this.#effects.toneMapping.method}`;
-        select.addEventListener('change', () => {
-          this.#effects.toneMapping.method = Number.parseFloat(select.value);
-          renderer.toneMapping = this.#effects.toneMapping.method;
-          rebuildComposer();
-        });
-
-        row.appendChild(labelEl);
-        row.appendChild(select);
-        parent.appendChild(row);
-      };
-
-      const addSettingsForPass = (passId, parent) => {
-        if (passId === 'bloom') {
-          addRangeControl(parent, {
-            label: 'Strength', min: 0, max: 10, step: 0.001,
-            getValue: () => this.#effects.bloom.settings.strength,
-            setValue: value => { this.#effects.bloom.settings.strength = value; },
-          });
-          addRangeControl(parent, {
-            label: 'Radius', min: -10, max: 10, step: 0.001,
-            getValue: () => this.#effects.bloom.settings.radius,
-            setValue: value => { this.#effects.bloom.settings.radius = value; },
-          });
-          addRangeControl(parent, {
-            label: 'Threshold', min: 0, max: 10, step: 0.001,
-            getValue: () => this.#effects.bloom.settings.threshold,
-            setValue: value => { this.#effects.bloom.settings.threshold = value; },
-          });
-        }
-
-        if (passId === 'RGBShift') {
-          addRangeControl(parent, {
-            label: 'Amount', min: 0, max: 0.1, step: 0.0001,
-            getValue: () => this.#effects.RGBShift.shader.uniforms.amount.value,
-            setValue: value => { this.#effects.RGBShift.shader.uniforms.amount.value = value; },
-          });
-          addRangeControl(parent, {
-            label: 'Angle', min: 0, max: Math.PI * 2, step: 0.001,
-            getValue: () => this.#effects.RGBShift.shader.uniforms.angle.value,
-            setValue: value => { this.#effects.RGBShift.shader.uniforms.angle.value = value; },
-          });
-        }
-
-        if (passId === 'afterImagePass') {
-          addRangeControl(parent, {
-            label: 'Damp', min: 0, max: 1, step: 0.001,
-            getValue: () => this.#effects.afterImagePass.shader.uniforms.damp.value,
-            setValue: value => { this.#effects.afterImagePass.shader.uniforms.damp.value = value; },
-          });
-        }
-
-        if (passId === 'colorifyShader') {
-          addColorControl(parent, {
-            label: 'Hue',
-            getValue: () => `#${this.#effects.colorifyShader.color.getHexString()}`,
-            setValue: value => { this.#effects.colorifyShader.color.set(value); },
-          });
-        }
-
-        if (passId === 'kaleidoShader') {
-          addRangeControl(parent, {
-            label: 'Sides', min: 1, max: 24, step: 1,
-            getValue: () => this.#effects.kaleidoShader.shader.uniforms.sides.value,
-            setValue: value => { this.#effects.kaleidoShader.shader.uniforms.sides.value = Math.max(1, Math.round(value)); },
-          });
-          addRangeControl(parent, {
-            label: 'Angle', min: 0, max: Math.PI * 2, step: 0.001,
-            getValue: () => this.#effects.kaleidoShader.shader.uniforms.angle.value,
-            setValue: value => { this.#effects.kaleidoShader.shader.uniforms.angle.value = value; },
-          });
-        }
-
-        if (passId === 'outputPass') {
-          addToneMappingControl(parent);
-          addRangeControl(parent, {
-            label: 'Exposure', min: -500, max: 500, step: 0.01,
-            getValue: () => renderer.toneMappingExposure,
-            setValue: value => { renderer.toneMappingExposure = value; },
-          });
-        }
-      };
-
-      const renderStack = () => {
-        stackList.innerHTML = '';
-        const orderedLayers = this.#effects.getPassOrder();
-
-        orderedLayers.forEach((passId, index) => {
-          const row = document.createElement('div');
-          row.dataset.layerId = passId;
-          Object.assign(row.style, {
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: '8px',
-            padding: '6px',
-            background: 'rgba(255,255,255,0.03)',
-          });
-
-          const header = document.createElement('div');
-          Object.assign(header.style, {
-            display: 'grid',
-            gridTemplateColumns: 'auto 1fr auto',
-            alignItems: 'center',
-            gap: '8px',
-          });
-
-          const dragHandle = document.createElement('div');
-          const isLocked = passId === 'outputPass';
-          dragHandle.textContent = isLocked ? 'x' : '::';
-          Object.assign(dragHandle.style, {
-            opacity: isLocked ? '0.45' : '0.7',
-            cursor: isLocked ? 'not-allowed' : 'grab',
-            userSelect: 'none',
-            fontWeight: '700',
-            width: '18px',
-            textAlign: 'center',
-          });
-
-          const nameEl = document.createElement('div');
-          nameEl.textContent = `${index + 1}. ${layerLabels[passId] ?? passId}`;
-          nameEl.style.fontSize = '13px';
-          nameEl.style.fontWeight = '600';
-
-          const toggle = document.createElement('input');
-          toggle.type = 'checkbox';
-          toggle.checked = Boolean(this.#effects[passId]?.enabled);
-          toggle.addEventListener('change', () => {
-            if (!this.#effects[passId]) {
-              return;
-            }
-            this.#effects[passId].enabled = toggle.checked;
-            if (passId === 'sobelShader') {
-              syncSobelResolution();
-            }
-            rebuildComposer();
-            renderStack();
-          });
-
-          header.appendChild(dragHandle);
-          header.appendChild(nameEl);
-          header.appendChild(toggle);
-          row.appendChild(header);
-
-          const settings = document.createElement('div');
-          Object.assign(settings.style, {
-            marginTop: '8px',
-            paddingTop: '8px',
-            borderTop: '1px solid rgba(255,255,255,0.12)',
-            display: toggle.checked || passId === 'outputPass' ? 'block' : 'none',
-          });
-          addSettingsForPass(passId, settings);
-          if (settings.childElementCount > 0) {
-            row.appendChild(settings);
-          }
-
-          row.draggable = false;
-          if (!isLocked) {
-            dragHandle.draggable = true;
-
-            dragHandle.addEventListener('pointerdown', () => {
-              row.draggable = true;
-            });
-
-            dragHandle.addEventListener('pointerup', () => {
-              row.draggable = false;
-            });
-
-            dragHandle.addEventListener('pointercancel', () => {
-              row.draggable = false;
-            });
-
-            row.addEventListener('dragstart', event => {
-              if (event.target !== dragHandle) {
-                event.preventDefault();
-                row.draggable = false;
-                return;
-              }
-              draggedLayerId = passId;
-              row.style.opacity = '0.55';
-              clearDropIndicators();
-              event.dataTransfer.effectAllowed = 'move';
-              event.dataTransfer.setData('text/plain', passId);
-            });
-
-            row.addEventListener('dragend', () => {
-              row.style.opacity = '1';
-              draggedLayerId = null;
-              clearDropIndicators();
-              row.draggable = false;
-            });
-          }
-
-          row.addEventListener('dragenter', event => {
-            if (!draggedLayerId || draggedLayerId === passId) {
-              return;
-            }
-            event.preventDefault();
-            clearDropIndicators();
-            row.style.outline = '2px solid rgba(123, 190, 255, 0.95)';
-            row.style.background = 'rgba(123, 190, 255, 0.2)';
-          });
-
-          row.addEventListener('dragleave', event => {
-            if (!event.currentTarget?.contains(event.relatedTarget)) {
-              row.style.outline = 'none';
-              row.style.background = 'rgba(255,255,255,0.03)';
-            }
-          });
-
-          row.addEventListener('dragover', event => {
-            if (!draggedLayerId) {
-              return;
-            }
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-          });
-
-          row.addEventListener('drop', event => {
-            if (!draggedLayerId) {
-              return;
-            }
-            event.preventDefault();
-
-            const currentOrder = this.#effects.getPassOrder();
-            const movable = currentOrder.filter(id => id !== 'outputPass');
-            const from = movable.indexOf(draggedLayerId);
-            if (from < 0) {
-              return;
-            }
-
-            const targetLayerId = row.dataset.layerId;
-            let to = movable.indexOf(targetLayerId);
-            if (targetLayerId === 'outputPass') {
-              to = movable.length - 1;
-            }
-            if (to < 0) {
-              return;
-            }
-
-            const [moved] = movable.splice(from, 1);
-            movable.splice(to, 0, moved);
-            this.#effects.setPassOrder([...movable, 'outputPass']);
-            rebuildComposer();
-            renderStack();
-          });
-
-          stackList.appendChild(row);
-        });
-      };
-
-      const closeRow = document.createElement('div');
-      Object.assign(closeRow.style, {
-        display: 'flex',
-        justifyContent: 'flex-end',
-        marginTop: '6px',
-      });
-
-      const closeButton = document.createElement('button');
-      closeButton.type = 'button';
-      closeButton.textContent = 'Close';
-      Object.assign(closeButton.style, {
-        border: '1px solid rgba(255,255,255,0.25)',
-        borderRadius: '6px',
-        background: 'rgba(255,255,255,0.1)',
-        color: '#fff',
-        padding: '6px 10px',
-        cursor: 'pointer',
-      });
-
-      const refresh = () => {
-        renderStack();
-      };
-
-      const close = () => {
-        clearDropIndicators();
-        overlay.style.display = 'none';
-      };
-
-      const positionDock = () => {
-        const rect = renderer.domElement.getBoundingClientRect();
-        const gutter = 12;
-        const viewportMargin = 8;
-
-        if (useIntegratedControls) {
-          const panelWidth = Math.max(
-            220,
-            Math.min(300, Math.floor(rect.width * 0.28)),
-          );
-          const maxHeight = Math.max(200, Math.floor(rect.height - viewportMargin * 2));
-          const left = Math.max(viewportMargin, rect.right - panelWidth - viewportMargin);
-          const top = Math.max(viewportMargin, rect.top + viewportMargin);
-
-          panel.style.width = `${panelWidth}px`;
-          panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
-          overlay.style.left = `${Math.round(left)}px`;
-          overlay.style.top = `${Math.round(top)}px`;
-          return;
-        }
-
-        let panelWidth = Math.min(380, Math.max(280, Math.floor(window.innerWidth * 0.32)));
-        const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
-        panelWidth = Math.min(panelWidth, maxAllowed);
-        panel.style.width = `${panelWidth}px`;
-
-        const rightSpace = window.innerWidth - rect.right - gutter;
-        const leftSpace = rect.left - gutter;
-
-        let left = rect.right + gutter;
-
-        if (rightSpace < panelWidth && leftSpace >= panelWidth) {
-          left = rect.left - panelWidth - gutter;
-        } else if (rightSpace < panelWidth && leftSpace < panelWidth) {
-          panelWidth = Math.max(240, Math.min(window.innerWidth - viewportMargin * 2, panelWidth));
-          panel.style.width = `${panelWidth}px`;
-          left = Math.max(
-            viewportMargin,
-            Math.min(rect.right + gutter, window.innerWidth - panelWidth - viewportMargin),
-          );
-        }
-
-        const top = Math.max(
-          viewportMargin,
-          Math.min(rect.top, window.innerHeight - 120),
-        );
-        const maxHeight = Math.max(
-          220,
-          Math.min(rect.height, window.innerHeight - top - viewportMargin),
-        );
-
-        overlay.style.left = `${Math.round(left)}px`;
-        overlay.style.top = `${Math.round(top)}px`;
-        panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
-      };
-
-      const handleViewportLayoutChange = () => {
-        if (overlay.style.display !== 'none') {
-          positionDock();
-        }
-      };
-
-      const open = () => {
-        refresh();
-        positionDock();
-        overlay.style.display = 'block';
-      };
-
-      closeButton.addEventListener('click', close);
-
-      window.addEventListener('resize', handleViewportLayoutChange);
-      window.addEventListener('scroll', handleViewportLayoutChange, true);
-
-      closeRow.appendChild(closeButton);
-      panel.appendChild(title);
-      panel.appendChild(hint);
-      stackSection.appendChild(stackTitle);
-      stackSection.appendChild(stackList);
-      panel.appendChild(stackSection);
-      panel.appendChild(closeRow);
-      overlay.appendChild(panel);
-      document.body.appendChild(overlay);
-
-      return {
-        element: overlay,
-        open,
-        close,
-        refresh,
-      };
-    };
-
-    const createSceneCameraDock = () => {
-      const overlay = document.createElement('div');
-      overlay.className = 'mage-scene-camera-dock';
-      Object.assign(overlay.style, {
-        position: 'fixed',
-        zIndex: '40',
-        display: 'none',
-        pointerEvents: 'none',
-      });
-
-      const panel = document.createElement('div');
-      Object.assign(panel.style, {
-        width: '320px',
-        maxHeight: '84vh',
-        overflow: 'auto',
-        padding: '12px',
-        borderRadius: '12px',
-        border: '1px solid rgba(255,255,255,0.2)',
-        background: 'rgba(13, 17, 26, 0.95)',
-        color: '#fff',
-        display: 'grid',
-        gap: '10px',
-        pointerEvents: 'auto',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
-      });
-
-      const title = document.createElement('div');
-      title.textContent = 'Scene + Camera';
-      Object.assign(title.style, {
-        fontSize: '16px',
-        fontWeight: '700',
-      });
-
-      const hint = document.createElement('div');
-      hint.textContent = 'Visualizer state and camera controls.';
-      Object.assign(hint.style, {
-        fontSize: '12px',
-        opacity: '0.8',
-      });
-
-      const makeSection = label => {
-        const section = document.createElement('div');
-        Object.assign(section.style, {
-          border: '1px solid rgba(255,255,255,0.15)',
-          borderRadius: '10px',
-          padding: '8px',
-        });
-
-        const sectionTitle = document.createElement('div');
-        sectionTitle.textContent = label;
-        Object.assign(sectionTitle.style, {
-          fontSize: '13px',
-          fontWeight: '600',
-          marginBottom: '8px',
-        });
-        section.appendChild(sectionTitle);
-
-        const content = document.createElement('div');
-        content.style.display = 'grid';
-        section.appendChild(content);
-        return { section, content };
-      };
-
-      const makeRow = (parent, labelText) => {
-        const row = document.createElement('label');
-        Object.assign(row.style, {
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          alignItems: 'center',
-          gap: '10px',
-          marginBottom: '6px',
-          fontSize: '12px',
-        });
-        const label = document.createElement('span');
-        label.textContent = labelText;
-        row.appendChild(label);
-        parent.appendChild(row);
-        return row;
-      };
-
-      const sceneSection = makeSection('Scene Settings');
-      const cameraSection = makeSection('Camera Settings');
-      const syncers = [];
-
-      const addRangeControl = (parent, { label, min, max, step = 0.001, getValue, setValue, onCommit }) => {
-        const row = makeRow(parent, label);
-        const wrap = document.createElement('div');
-        Object.assign(wrap.style, {
-          display: 'grid',
-          gridTemplateColumns: '1fr auto auto',
-          alignItems: 'center',
-          gap: '8px',
-          minWidth: '220px',
-        });
-
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = `${min}`;
-        input.max = `${max}`;
-        input.step = `${step}`;
-
-        const stepText = `${step}`;
-        const decimalPlaces = stepText.includes('.') ? stepText.split('.')[1].length : 0;
-        const formatValue = value => {
-          if (!Number.isFinite(value)) {
-            return `${min}`;
-          }
-          return decimalPlaces > 0 ? value.toFixed(Math.min(6, decimalPlaces)) : `${Math.round(value)}`;
-        };
-
-        const valueLabel = document.createElement('input');
-        valueLabel.type = 'number';
-        valueLabel.min = `${min}`;
-        valueLabel.max = `${max}`;
-        valueLabel.step = `${step}`;
-        Object.assign(valueLabel.style, {
-          width: '86px',
-          textAlign: 'right',
-          fontVariantNumeric: 'tabular-nums',
-          background: 'rgba(0,0,0,0.5)',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.3)',
-          borderRadius: '4px',
-          padding: '2px 4px',
-        });
-
-        const clamp = value => Math.max(min, Math.min(max, value));
-
-        const sync = () => {
-          const value = Number(getValue());
-          const normalized = Number.isFinite(value) ? clamp(value) : min;
-          input.value = `${normalized}`;
-          valueLabel.value = formatValue(normalized);
-        };
-
-        input.addEventListener('input', () => {
-          const value = clamp(Number.parseFloat(input.value));
-          setValue(value);
-          valueLabel.value = formatValue(value);
-          if (typeof onCommit === 'function') {
-            onCommit();
-          }
-        });
-
-        valueLabel.addEventListener('change', () => {
-          const parsed = Number.parseFloat(valueLabel.value);
-          if (!Number.isFinite(parsed)) {
-            sync();
-            return;
-          }
-          const value = clamp(parsed);
-          setValue(value);
-          input.value = `${value}`;
-          valueLabel.value = formatValue(value);
-          if (typeof onCommit === 'function') {
-            onCommit();
-          }
-        });
-
-        wrap.appendChild(input);
-        wrap.appendChild(valueLabel);
-        row.appendChild(wrap);
-        syncers.push(sync);
-        sync();
-      };
-
-      const addCheckboxControl = (parent, { label, getValue, setValue, onCommit }) => {
-        const row = makeRow(parent, label);
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-
-        const sync = () => {
-          input.checked = Boolean(getValue());
-        };
-
-        input.addEventListener('change', () => {
-          setValue(input.checked);
-          if (typeof onCommit === 'function') {
-            onCommit();
-          }
-        });
-
-        row.appendChild(input);
-        syncers.push(sync);
-        sync();
-      };
-
-      const addSelectControl = (parent, { label, options, getValue, setValue, onCommit }) => {
-        const row = makeRow(parent, label);
-        const select = document.createElement('select');
-        Object.assign(select.style, {
-          minWidth: '170px',
-          background: 'rgba(0,0,0,0.5)',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.3)',
-          borderRadius: '6px',
-          padding: '4px 6px',
-        });
-
-        options.forEach(option => {
-          const el = document.createElement('option');
-          el.value = `${option.value}`;
-          el.textContent = option.label;
-          select.appendChild(el);
-        });
-
-        const sync = () => {
-          select.value = `${getValue()}`;
-        };
-
-        select.addEventListener('change', () => {
-          setValue(Number.parseFloat(select.value));
-          if (typeof onCommit === 'function') {
-            onCommit();
-          }
-        });
-
-        row.appendChild(select);
-        syncers.push(sync);
-        sync();
-      };
-
-      const embeddedSkyboxIds = Object.keys(EMBEDDED_SKYBOXES)
-        .map(value => Number.parseInt(value, 10))
-        .filter(Number.isFinite)
-        .sort((a, b) => a - b);
-
-      if (
-        embeddedSkyboxIds.length > 0
-        && !embeddedSkyboxIds.includes(Number.parseInt(`${visualizer.skyboxPreset}`, 10))
-      ) {
-        visualizer.skyboxPreset = embeddedSkyboxIds[0];
-      }
-
-      addSelectControl(sceneSection.content, {
-        label: 'Skybox',
-        options: embeddedSkyboxIds.map(id => ({ label: `${id}`, value: id })),
-        getValue: () => Number.parseInt(`${visualizer.skyboxPreset}`, 10) || embeddedSkyboxIds[0] || 0,
-        setValue: value => {
-          visualizer.skyboxPreset = value;
-          engine.#_loadSkybox({
-            type: 'preset',
-            presetId: Number.parseInt(`${value}`, 10) || 0,
-          });
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'MOD 1',
-        min: 0.01,
-        max: 2.0,
-        getValue: () => state.minimizing_factor,
-        setValue: value => {
-          state.minimizing_factor = value;
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'MOD 2',
-        min: 1.0,
-        max: 10.0,
-        step: 0.01,
-        getValue: () => state.power_factor,
-        setValue: value => {
-          state.power_factor = value;
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'MOD 3',
-        min: 0.0,
-        max: 1.0,
-        getValue: () => state.pointerDownMultiplier,
-        setValue: value => {
-          state.pointerDownMultiplier = value;
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'Base Speed',
-        min: 0.01,
-        max: 0.9,
-        getValue: () => state.base_speed,
-        setValue: value => {
-          state.base_speed = value;
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'Easing Speed',
-        min: 0.01,
-        max: 0.9,
-        getValue: () => state.easing_speed,
-        setValue: value => {
-          state.easing_speed = value;
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'Scale',
-        min: 1,
-        max: 200,
-        step: 0.1,
-        getValue: () => visualizer.scale,
-        setValue: value => {
-          visualizer.scale = value;
-        },
-      });
-
-      addCheckboxControl(sceneSection.content, {
-        label: 'Auto Rotate',
-        getValue: () => controls.autoRotate,
-        setValue: value => {
-          controls.autoRotate = value;
-        },
-      });
-
-      addRangeControl(sceneSection.content, {
-        label: 'Rotation Speed',
-        min: 0.1,
-        max: 50,
-        step: 0.01,
-        getValue: () => controls.autoRotateSpeed,
-        setValue: value => {
-          controls.autoRotateSpeed = value;
-        },
-      });
-
-      addRangeControl(cameraSection.content, {
-        label: 'FOV',
-        min: 1,
-        max: 359,
-        step: 1,
-        getValue: () => camera.fov,
-        setValue: value => {
-          camera.fov = value;
-          camera.updateProjectionMatrix();
-        },
-      });
-
-      addRangeControl(cameraSection.content, {
-        label: 'Camera Orientation',
-        min: 0,
-        max: 2 * Math.PI,
-        step: 0.001,
-        getValue: () => state.camTilt,
-        setValue: value => {
-          state.camTilt = value;
-          camera.up.set(
-            Math.sin(state.camTilt),
-            Math.cos(state.camTilt),
-            -Math.sin(state.camTilt),
-          );
-        },
-      });
-
-      const resetRow = document.createElement('div');
-      Object.assign(resetRow.style, {
-        display: 'flex',
-        justifyContent: 'flex-end',
-        marginTop: '6px',
-      });
-      const resetButton = document.createElement('button');
-      resetButton.type = 'button';
-      resetButton.textContent = 'Reset Camera';
-      Object.assign(resetButton.style, {
-        border: '1px solid rgba(255,255,255,0.25)',
-        borderRadius: '6px',
-        background: 'rgba(255,255,255,0.1)',
-        color: '#fff',
-        padding: '6px 10px',
-        cursor: 'pointer',
-      });
-      resetButton.addEventListener('click', () => {
-        controls.reset();
-      });
-      resetRow.appendChild(resetButton);
-      cameraSection.content.appendChild(resetRow);
-
-      const closeRow = document.createElement('div');
-      Object.assign(closeRow.style, {
-        display: 'flex',
-        justifyContent: 'flex-end',
-        marginTop: '6px',
-      });
-
-      const closeButton = document.createElement('button');
-      closeButton.type = 'button';
-      closeButton.textContent = 'Close';
-      Object.assign(closeButton.style, {
-        border: '1px solid rgba(255,255,255,0.25)',
-        borderRadius: '6px',
-        background: 'rgba(255,255,255,0.1)',
-        color: '#fff',
-        padding: '6px 10px',
-        cursor: 'pointer',
-      });
-
-      const refresh = () => {
-        syncers.forEach(sync => sync());
-      };
-
-      const close = () => {
-        overlay.style.display = 'none';
-      };
-
-      const positionDock = () => {
-        const rect = renderer.domElement.getBoundingClientRect();
-        const gutter = 12;
-        const viewportMargin = 8;
-
-        if (useIntegratedControls) {
-          const panelWidth = Math.max(
-            220,
-            Math.min(290, Math.floor(rect.width * 0.26)),
-          );
-          const maxHeight = Math.max(200, Math.floor(rect.height - viewportMargin * 2));
-          const left = Math.max(viewportMargin, rect.left + viewportMargin);
-          const top = Math.max(viewportMargin, rect.top + viewportMargin);
-
-          panel.style.width = `${panelWidth}px`;
-          panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
-          overlay.style.left = `${Math.round(left)}px`;
-          overlay.style.top = `${Math.round(top)}px`;
-          return;
-        }
-
-        let panelWidth = Math.min(360, Math.max(280, Math.floor(window.innerWidth * 0.28)));
-        const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
-        panelWidth = Math.min(panelWidth, maxAllowed);
-        panel.style.width = `${panelWidth}px`;
-
-        const leftSpace = rect.left - gutter;
-        const rightSpace = window.innerWidth - rect.right - gutter;
-        const leftNudge = 30; // increase for more left shift
-
-        let left = rect.left - panelWidth - gutter - leftNudge;
-        if (leftSpace < panelWidth && rightSpace >= panelWidth) {
-          left = rect.right + gutter;
-        } else if (leftSpace < panelWidth && rightSpace < panelWidth) {
-          left = viewportMargin;
-        }
-
-        const top = Math.max(viewportMargin, Math.min(rect.top, window.innerHeight - 120));
-        const maxHeight = Math.max(220, Math.min(rect.height, window.innerHeight - top - viewportMargin));
-
-        overlay.style.left = `${Math.round(left)}px`;
-        overlay.style.top = `${Math.round(top)}px`;
-        panel.style.maxHeight = `${Math.floor(maxHeight)}px`;
-      };
-
-      const handleViewportLayoutChange = () => {
-        if (overlay.style.display !== 'none') {
-          positionDock();
-        }
-      };
-
-      const open = () => {
-        refresh();
-        positionDock();
-        overlay.style.display = 'block';
-      };
-
-      closeButton.addEventListener('click', close);
-      window.addEventListener('resize', handleViewportLayoutChange);
-      window.addEventListener('scroll', handleViewportLayoutChange, true);
-
-      closeRow.appendChild(closeButton);
-      panel.appendChild(title);
-      panel.appendChild(hint);
-      panel.appendChild(sceneSection.section);
-      panel.appendChild(cameraSection.section);
-      panel.appendChild(closeRow);
-      overlay.appendChild(panel);
-      document.body.appendChild(overlay);
-
-      return {
-        element: overlay,
-        open,
-        close,
-        refresh,
-      };
-    };
-
-    const initTweakpane = () => {
-
-      // const previousPresetLoaded = engine.#onPresetLoaded;
-      // engine.#onPresetLoaded = preset => {
-      //   if (typeof previousPresetLoaded === 'function') {
-      //     previousPresetLoaded(preset);
-      //   }
-      //   setQuickPresetsVisible(!preset);
-      // };
-
-      // engine.setEmbeddedPresetButtonsVisible = visible => {
-      //   setQuickPresetsVisible(Boolean(visible));
-      // };
-
-      const paneMount = document.createElement('div');
-      paneMount.className = 'mage-pane-host';
-      Object.assign(paneMount.style, {
-        position: 'absolute',
-        top: useIntegratedControls ? '6px' : '8px',
-        right: useIntegratedControls ? '6px' : '8px',
-        zIndex: '20',
-      });
-      host.appendChild(paneMount);
-
-      pane = new Pane({ container: paneMount });
-
-      pane
-        .addButton({
-          title: 'Randomize',
-          label: '???',
-        })
-        .on('click', () => {
-          randomizeSettings();
-          pane.refresh();
-        });
-
-      fxStudioOverlay = createFxStudioOverlay();
-      sceneCameraDock = createSceneCameraDock();
-      pane.hidden = true;
-
-      // Expose tweakpane state export so engine.toPreset can include settings.
-      // engine.#exportSettingsState = () => {
-      //   if (!pane) {
-      //     return null;
-      //   }
-      //   return pane.exportState();
-      // };
-
-      engine.#importSettingsState = state => {
-        if (!pane) {
-          return;
-        } else {
-          pane.importState(state);
-          pane.refresh();
-
-          renderer.toneMapping = this.#effects.toneMapping.method;
-          if (typeof engine.#_syncSobelResolution === 'function') {
-            engine.#_syncSobelResolution();
-          }
-
-          rebuildComposer();
-          sceneCameraDock?.refresh();
-          fxStudioOverlay?.refresh();
-        } 
-      };
-
-      engine.#refreshSettingsUI = () => {
-        if (!pane) {
-          return;
-        }
-        pane.refresh();
-        fxStudioOverlay?.refresh();
-        sceneCameraDock?.refresh();
-      };
-    };
-
-    const getOS = () => {
-      const userAgent = window.navigator.userAgent;
-      const platform =
-        window.navigator?.userAgentData?.platform || window.navigator.platform;
-      const macosPlatforms = ['macOS', 'Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'];
-      const windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'];
-      const iosPlatforms = ['iPhone', 'iPad', 'iPod'];
-      let os = null;
-
-      if (macosPlatforms.indexOf(platform) !== -1) {
-        os = 'Mac OS';
-      } else if (iosPlatforms.indexOf(platform) !== -1) {
-        os = 'iOS';
-      } else if (windowsPlatforms.indexOf(platform) !== -1) {
-        os = 'Windows';
-      } else if (/Android/.test(userAgent)) {
-        os = 'Android';
-      } else if (/Linux/.test(platform)) {
-        os = 'Linux';
-      }
-
-      return os;
-    };
-
-    const toggleUI = () => {
-      // const buttonsContainer = document.querySelector('.ui_buttons');
-      // buttonsContainer.style.display =
-      //   buttonsContainer.style.display === 'flex' ? 'none' : 'flex';
-              // const tooltipImage = tooltipUI.element.querySelector('img');
-          // if (tooltipImage) {
-          //   tooltipImage.hidden = false;
-          // }
-          // visualizer.render_tooltips = true;
-          // tooltipUI.visible = true;
-      if (pane) {
-        pane.hidden = !pane.hidden;
-        if (pane.hidden && fxStudioOverlay) {
-          fxStudioOverlay.close();
-        } else {
-          fxStudioOverlay.open();
-        }
-        if (pane.hidden && sceneCameraDock) {
-          sceneCameraDock.close();
-        } else {
-          sceneCameraDock.open();
-        }
-      }
-    };
-
-    const switchControls = () => {
-      visualizer.render_tooltips = false;
-      if (pane) {
-        pane.hidden = true;
-      }
-      toggleUI();
-      const hideUIbutton = document.getElementById('ui_hide');
-      hideUIbutton.style.display = 'none';
-    };
-
-    const eventSetup = () => {
-      const hideQuickPresets = () => {
-        if (engine.#presetDock) {
-          engine.#presetDock.setQuickPresetsVisible(false);
-        }
-      };
-
-      window.addEventListener('resize', () => {
-        if (typeof engine.#_syncViewport === 'function') {
-          engine.#_syncViewport(true);
-        }
-        if (typeof engine.#_syncSobelResolution === 'function') {
-          engine.#_syncSobelResolution();
-        }
-        rebuildComposer();
-      });
-
-      if (engine.#windowInputBridge) {
-        engine.#windowInputBridge.onToggleUI = () => {
-          hideQuickPresets();
-          toggleUI();
-        };
-        engine.#windowInputBridge.onHideQuickPresets = () => {
-          hideQuickPresets();
-        };
-        engine.#windowInputBridge.onUpdateTooltip = ({ visible, x, y }) => {
-          tooltipUI.visible = visible;
-          tooltipUI.x = x;
-          tooltipUI.y = y;
-        };
-      }
-
-      if (engine.#externalInputBridge) {
-        engine.#externalInputBridge.onToggleUI = engine.#windowInputBridge?.onToggleUI || null;
-        engine.#externalInputBridge.onHideQuickPresets = engine.#windowInputBridge?.onHideQuickPresets || null;
-        engine.#externalInputBridge.onUpdateTooltip = engine.#windowInputBridge?.onUpdateTooltip || null;
-      }
-    };
-
-    // const openShaderSelectionWindow = visualizer => {
-    //   if (!visualizer || !Array.isArray(visualizer.shaders) || visualizer.shaders.length === 0) {
-    //     window.alert('No saved shaders available yet. Load a shader preset first.');
-    //     return;
-    //   }
-
-    //   const existingOverlay = document.getElementById('mage-shader-picker-overlay');
-    //   if (existingOverlay) {
-    //     existingOverlay.remove();
-    //   }
-
-    //   const overlay = document.createElement('div');
-    //   overlay.id = 'mage-shader-picker-overlay';
-    //   Object.assign(overlay.style, {
-    //     position: 'fixed',
-    //     inset: '0',
-    //     zIndex: '10000',
-    //     background: 'rgba(0, 0, 0, 0.55)',
-    //     display: 'flex',
-    //     alignItems: 'center',
-    //     justifyContent: 'center',
-    //     padding: '12px',
-    //   });
-
-    //   const dialog = document.createElement('div');
-    //   Object.assign(dialog.style, {
-    //     width: 'min(640px, 96vw)',
-    //     maxHeight: '80vh',
-    //     overflow: 'auto',
-    //     borderRadius: '10px',
-    //     border: '1px solid rgba(255, 255, 255, 0.2)',
-    //     background: 'rgba(20, 24, 30, 0.95)',
-    //     color: '#fff',
-    //     padding: '14px',
-    //     fontFamily: 'sans-serif',
-    //   });
-
-    //   const title = document.createElement('div');
-    //   title.textContent = 'Select Shader by ID';
-    //   Object.assign(title.style, {
-    //     fontSize: '16px',
-    //     fontWeight: '600',
-    //     marginBottom: '10px',
-    //   });
-
-    //   const selector = document.createElement('select');
-    //   selector.size = Math.min(12, visualizer.shaders.length);
-    //   Object.assign(selector.style, {
-    //     width: '100%',
-    //     minHeight: '180px',
-    //     background: 'rgba(0, 0, 0, 0.35)',
-    //     color: '#fff',
-    //     border: '1px solid rgba(255, 255, 255, 0.25)',
-    //     borderRadius: '8px',
-    //     padding: '6px',
-    //   });
-
-    //   visualizer.shaders.forEach((shaderItem, index) => {
-    //     const option = document.createElement('option');
-    //     option.value = `${shaderItem.id}`;
-    //     const isActive = index === visualizer.shaderIndex;
-    //     option.textContent = `${isActive ? '* ' : ''}${shaderItem.id}`;
-    //     option.selected = isActive;
-    //     selector.appendChild(option);
-    //   });
-
-    //   const actions = document.createElement('div');
-    //   Object.assign(actions.style, {
-    //     display: 'flex',
-    //     justifyContent: 'flex-end',
-    //     gap: '8px',
-    //     marginTop: '12px',
-    //   });
-
-    //   const cancelButton = document.createElement('button');
-    //   cancelButton.type = 'button';
-    //   cancelButton.textContent = 'Cancel';
-    //   Object.assign(cancelButton.style, {
-    //     border: '1px solid rgba(255, 255, 255, 0.2)',
-    //     borderRadius: '6px',
-    //     background: 'transparent',
-    //     color: '#fff',
-    //     padding: '8px 10px',
-    //     cursor: 'pointer',
-    //   });
-
-    //   const applyButton = document.createElement('button');
-    //   applyButton.type = 'button';
-    //   applyButton.textContent = 'Apply';
-    //   Object.assign(applyButton.style, {
-    //     border: '1px solid rgba(255, 255, 255, 0.2)',
-    //     borderRadius: '6px',
-    //     background: '#2f6aff',
-    //     color: '#fff',
-    //     padding: '8px 10px',
-    //     cursor: 'pointer',
-    //   });
-
-    //   const closeDialog = () => {
-    //     overlay.remove();
-    //   };
-
-    //   const applySelectedShader = () => {
-    //     const selectedShaderId = selector.value;
-    //     const selectedIndex = visualizer.shaders.findIndex(
-    //       shaderItem => `${shaderItem.id}` === `${selectedShaderId}`,
-    //     );
-
-    //     if (selectedIndex < 0) {
-    //       return;
-    //     }
-
-    //     const selectedShader = visualizer.shaders[selectedIndex];
-    //     visualizer.shaderIndex = selectedIndex;
-    //     visualizer.load(selectedShader.shader, false);
-    //     closeDialog();
-    //   };
-
-    //   cancelButton.addEventListener('click', closeDialog);
-    //   applyButton.addEventListener('click', applySelectedShader);
-    //   selector.addEventListener('dblclick', applySelectedShader);
-    //   overlay.addEventListener('click', event => {
-    //     if (event.target === overlay) {
-    //       closeDialog();
-    //     }
-    //   });
-    //   document.addEventListener(
-    //     'keydown',
-    //     event => {
-    //       if (event.key === 'Escape' && document.body.contains(overlay)) {
-    //         closeDialog();
-    //       }
-    //     },
-    //     { once: true },
-    //   );
-
-    //   actions.appendChild(cancelButton);
-    //   actions.appendChild(applyButton);
-    //   dialog.appendChild(title);
-    //   dialog.appendChild(selector);
-    //   dialog.appendChild(actions);
-    //   overlay.appendChild(dialog);
-    //   document.body.appendChild(overlay);
-    //   selector.focus();
-    // };
-
-    initTweakpane();
-    eventSetup();
-    if (getOS() !== ('Windows' || 'Mac OS' || 'Linux')) {
-      switchControls();
+  };
+
+  setRandomSkybox() {
+    const randomSkybox = getRandomSkyboxId();
+    if (randomSkybox) {
+      this.#visualizer.skyboxPreset = randomSkybox;
     }
-    
-    this.#controlPanel = pane;
+    this.#_loadSkybox({ type: 'preset', presetId: randomSkybox });
+  }
+
+  showIntegratedControls() {
+    if (!this.#controlSettings.active) {
+      this.initControls();
+    }
+    if (this.#uiController) {
+      this.#uiController.show();
+    } else {
+      if (this.log) console.warn('Integrated controls are not available. Please check control settings and initialization.');
+    }
+  }
+
+  hideIntegratedControls() {
+    if (this.#uiController) {
+      this.#uiController.hide();
+    } else {
+      if (this.log) console.warn('Integrated controls are not available. Please check control settings and initialization.');
+    }
+  }
+
+  isRunning() {
+    return this.#isRunning;
+  }
+
+  getEngineFields() {
+    return {
+      scene: this.#scene,
+      renderer: this.#renderer,
+      camera: this.#camera,
+      controls: this.#controls,
+      canvas: this.#canvas,
+      state: this.#state,
+      visualizer: this.#visualizer,
+      controlSettings: this.#controlSettings,
+    }
   }
 
   openPresetDock() {
@@ -4084,9 +2523,9 @@ export class MAGEEngine {
       this.#presetDock.show();
       return;
     }
-    
+
     this.#presetDock = new MAGEPresetDock(
-      this, 
+      this,
       this.#scene,
       this.#renderer,
       this.#camera,
@@ -4100,10 +2539,10 @@ export class MAGEEngine {
     this.#presetDock.show();
 
     const handlePresetDockLayoutChange = () => {
-        const { quickPresetHost } = this.#presetDock;
-        if (quickPresetHost.style.display !== 'none') {
-          this.#presetDock.positionPresetDock();
-        }
+      const { quickPresetHost } = this.#presetDock;
+      if (quickPresetHost.style.display !== 'none') {
+        this.#presetDock.positionPresetDock();
+      }
     };
     window.addEventListener('resize', handlePresetDockLayoutChange);
     window.addEventListener('scroll', handlePresetDockLayoutChange, true);
