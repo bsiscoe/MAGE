@@ -26,6 +26,23 @@ export interface MAGEPreset {
 }
 
 /**
+ * InputState represents externally-managed pointer and interaction signals that can be fed into the engine.
+ * This is useful when the host application wants full control over input routing (for example React apps with layered DOM).
+ */
+
+export interface InputState {
+  clientX?: number;
+  clientY?: number;
+  pointerOverUi?: boolean;
+  currPointerDown?: number;
+  requestWheelDirection?: -1 | 0 | 1 | number;
+  requestToggleUI?: boolean;
+  requestResetVisualizer?: boolean;
+  requestNextShader?: boolean;
+  requestPreviousShader?: boolean;
+}
+
+/**
  * InputSource is an optional adapter interface for host-managed input.
  * - getState() provides an initial snapshot.
  * - subscribe(handler) streams updates and may return an unsubscribe callback.
@@ -37,19 +54,6 @@ export interface MAGEPreset {
 export interface InputSource {
   getState?: () => InputState;
   subscribe?: (handler: (state: InputState) => void) => void | (() => void);
-}
-
-/**
- * inputState represents externally-managed pointer and interaction signals that can be fed into the engine.
- */
-export interface InputState {
-  clientX?: number;
-  clientY?: number;
-  pointerOverUi?: boolean;
-  currPointerDown?: number;
-  requestWheelDirection?: -1 | 0 | 1 | number;
-  requestToggleUI?: boolean;
-  requestResetVisualizer?: boolean;
 }
 
 /**
@@ -74,24 +78,6 @@ export interface CaptureFramePreviewOptions {
  */
 export interface CaptureThumbnailOptions extends CaptureFramePreviewOptions {
   settleFrames?: number; // Number of frames to wait for the scene to settle before capturing (default: 0)
-}
-
-/**
- * InputState represents externally-managed pointer and interaction signals that can be fed into the engine.
- * This is useful when the host application wants full control over input routing (for example React apps with layered DOM).
- * The properties of InputState include:
- * - clientX and clientY: The current pointer position in client coordinates.
- * - pointerOverUi: A boolean indicating whether the pointer is currently over the main MAGE UI element.
- * - currPointerDown: The current pointer down state, represented as a bitfield (e.g., 1 for left button, 2 for right button, etc.).
- * - requestWheelDirection: A number indicating the requested wheel scroll direction, where -1 represents scroll up, 1 represents scroll down, and 0 or undefined means no scroll.
- * - requestToggleUI: A boolean indicating whether there is a request to toggle the visibility of the MAGE UI.
- */
-export interface InputState {
-  clientX?: number;
-  clientY?: number;
-  pointerOverUi?: boolean;
-  currPointerDown?: number;
-  requestWheelDirection?: -1 | 0 | 1 | number;
 }
 
 /** 
@@ -131,9 +117,9 @@ export type MAGEFxPassOrder = [...MAGEFxPass[], 'outputPass'];
  * MAGEFxAPI provides a set of methods for controlling the effects in the MAGE engine.
  * @description This interface allows users to get/set effect settings programmatically.
  * @example
- * engine.effectControls.setBloomEnabled(true);
- * engine.effectControls.setBloomStrength(1.5);
- * const isBloomEnabled = engine.effectControls.getBloomEnabled();
+ * engine.fx.setBloomEnabled(true);
+ * engine.fx.setBloomStrength(1.5);
+ * const isBloomEnabled = engine.fx.getBloomEnabled();
  */
 export interface MAGEFxAPI {
   // Bloom Controls
@@ -205,21 +191,25 @@ export interface MAGEFxAPI {
   setOutputPassEnabled(value: boolean): void;
   
   // Pass Order
+  /** 
+   * Gets the current order of post-processing passes applied in the MAGE engine. The order is represented as an array of pass names, 
+     which can include any combination of the valid pass names defined in MAGEFxPassOrder. The order of the passes determines how 
+     the post-processing effects are applied to the visual output, with earlier passes being applied before later ones. By retrieving 
+     the current pass order, users can understand how the effects are currently configured and make informed decisions when modifying
+     the pass order or enabling/disabling specific effects.
+  */
   getPassOrder(): string[];
+  /** 
+   * Sets the order of post-processing passes in the MAGE engine. The order is specified as an array of pass names, which must be 
+     valid pass names defined in MAGEFxPassOrder. The order of the passes determines how the post-processing effects are applied 
+     to the visual output, with earlier passes being applied before later ones.
+  */
   setPassOrder(order: MAGEFxPassOrder): void;
-  
-  // UI Control
-  toggleUI(): void;
-}
+  getDefaultPassOrder(): MAGEFxPassOrder;
+  movePass(fromIndex: number, newIndex: number): void;
 
-/**
- * InputSource is an optional adapter interface for host-managed input.
- * - getState() provides an initial snapshot.
- * - subscribe(handler) streams updates and may return an unsubscribe callback.
- */
-export interface InputSource {
-  getState?: () => InputState;
-  subscribe?: (handler: (state: InputState) => void) => void | (() => void);
+  // randomize
+  randomizeSettings(): void;
 }
 
 /**
@@ -238,10 +228,6 @@ export interface MAGEEngineAPI {
    * Starts the MAGE engine, initiating the rendering loop and enabling audio playback.
    */
   start(): void;
-  /** 
-   * Control object for managing post-processing effects in the MAGE engine. Provides methods to get/set effect settings programmatically.
-  */
-  readonly fx: MAGEFxAPI;
   /**
    * Returns the total duration of the loaded audio in seconds. If no audio is loaded, it returns 0.
    */
@@ -274,13 +260,10 @@ export interface MAGEEngineAPI {
   isAudioLoaded(): boolean;
   /**
    * Loads audio from a URL/filepath.
-   * @param url 
+   * @param path - The URL or filepath of the audio to load. This can be a string representing the path to the audio file or a URL pointing to an audio resource 
+   * (URL must support CORS so things like YouTube will not work). 
    */
-  loadAudio(url?: string): void;
-  /**
-   * Unloads the currently loaded audio, if any, and stops playback.
-   */
-  unloadAudio(): void;
+  loadAudio(path?: string | URL): void;
   /**
    * Loads a MAGEPreset into the engine, applying all the settings and configurations contained in the preset to recreate the visual output. 
    * @param {MAGEPreset} preset - presetInput The preset to load into the engine.
@@ -333,14 +316,14 @@ export interface MAGEEngineAPI {
    * @param options An optional object that specifies the options for capturing the frame preview, including width, height, type, and quality.
    * @return A promise that resolves to a data URL string representing the captured frame preview image, or null if the capture failed.
    */
-  captureFramePreview?(options?: CaptureFramePreviewOptions): Promise<string | null>;
+  captureFramePreview(options?: CaptureFramePreviewOptions): Promise<string | null>;
   /**
    * Captures a thumbnail for a MAGEPreset object using a separate MAGEEngine instance and returns the image as a data URL string.
    * @param {MAGEPreset} preset - The MAGEPreset for which to capture the thumbnail. This preset will be loaded into a temporary MAGEEngine instance to generate the thumbnail.
    * @param options - An optional object that specifies the options for capturing the thumbnail, including width, height, type, quality, and settleFrames. The settleFrames option allows waiting for a specified number of frames to ensure the scene is stable before capturing the thumbnail.
    * @return A promise that resolves to a data URL string representing the captured thumbnail image, or null if the capture failed.
    */
-  captureThumbnail?(preset: MAGEPreset, options?: CaptureThumbnailOptions): Promise<string | null>;
+  captureThumbnail(preset: MAGEPreset, options?: CaptureThumbnailOptions): Promise<string | null>;
   /**
    * Disposes of the MAGE engine instance, releasing all resources, stopping any ongoing processes, and cleaning up event listeners. 
    * After calling dispose, the engine instance should not be used anymore, and a new instance should be created if needed. 
@@ -352,7 +335,7 @@ export interface MAGEEngineAPI {
    * allow users to interact with and modify the parameters of the MAGE engine in real-time. Also enables orbit controls for the camera,
    * allowing users to navigate the 3D scene by clicking and dragging the mouse. This method should be called after the engine has been initialized and is ready to accept user input.
    */
-  initControls(): void;
+  initControls(inputSource?: InputSource | null): void;
   /**
    * MAGE Fx field provides access to the MAGEFxAPI for controlling post-processing effects.
    * This field is available if the engine was initialized with withControls.active set to true, 
@@ -368,27 +351,47 @@ export interface MAGEEngineAPI {
    * host applications. The implementation of the preset dock may vary depending on the specific requirements and design of the 
    * host application, and it is not a mandatory feature for all MAGE engine integrations.
    */
-  openPresetDock?(): void;
+  openPresetDock(): void;
+}
+
+/**
+ * Configuration options for the MAGE Engine.
+ */
+export interface MAGEConfig {
+  /** The HTML canvas element to render the engine on. */
+  canvas: HTMLCanvasElement;
+  /** Whether to enable engine logging. Defaults to false. */
+  log?: boolean;
+  /** Configuration for UI and input controls. */
+  withControls?: {
+    /** Whether controls are currently enabled. */
+    active?: boolean;
+    /** Whether controls are integrated directly into the engine. */
+    integrated?: boolean;
+  };
+  /** Whether the engine should start automatically after initialization. */
+  autoStart?: boolean;
 }
 
 /**
  * Initializes the MAGE engine with the specified options.
- * @param options - The options for initializing the MAGE engine.
+ * @param {MAGEConfig} options - The options for initializing the MAGE engine.
  * @return An object containing the initialized MAGE engine API for controlling the engine and its features.
  * @description This function serves as the main entry point for creating and configuring a MAGE engine instance. 
- * It accepts an optional configuration object that allows users to specify various settings such as the canvas 
- * element to render into, whether to enable debug logging, whether to include controls, and whether to automatically start the engine. 
- * The function returns an object that implements the MAGEEngineAPI interface, providing methods for controlling the engine, managing audio,
- * loading presets, capturing thumbnails, and more. If integrated controls are used, the integrated controls will be initialized with initControls,
- * and made available for user interaction. If integrated controls are not used, the returned MAGEEngineAPI object will still include an 
- * initControls method that can be called to initialize the controls separately, and set post processing fx options programatically.
  */
-export declare function initMAGE(options?: {
-  canvas?: HTMLCanvasElement;
-  log?: boolean;
-  withControls?: { active: boolean; integrated: boolean };
-  autoStart?: boolean;
-}): MAGEEngineAPI;
+export declare function initMAGE(options?: Partial<MAGEConfig>): MAGEEngineAPI;
+
+/**
+  * @param canvas The HTMLCanvasElement to render the preview on.
+  * @param preset The MAGEPreset to preview. This preset will be loaded into the temporary MAGEEngine instance for rendering.
+  * @param frameCount The number of frames to render the preview for before automatically disposing of the preview instance.
+  * @return A MAGEEngine instance that is rendering the preview of the specified preset. 
+  * @description This function creates a temporary MAGEEngine instance, loads the specified preset into it, and starts rendering. 
+    The preview must be manually disposed by the caller when it is no longer needed to free up resources. 
+    This function is useful for generating quick previews of presets without affecting the main engine instance, 
+    allowing users to see what a preset looks like before applying it to their main scene.
+*/
+export declare function previewMAGE(canvas: HTMLCanvasElement, preset: MAGEPreset, frameCount?: number): MAGEEngineAPI;
 `
 ].join('\n');
 

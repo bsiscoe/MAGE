@@ -28,31 +28,20 @@ engine.toPreset() -> returns the current preset as a MAGEPreset instance
 // Import core components and utilities
 import { MAGEEngine } from './MAGEEngine.js';
 
-/**
- * @typedef {Object} EngineControlSettings
- * @property {boolean} active - Whether to create controls for the engine
- * @property {boolean} integrated - Whether controls are integrated into the viewport (true) or separate (false)
- */
-
-/**
- * @typedef {Object} MAGEOptions
- * @property {HTMLCanvasElement} [canvas] - The canvas element to render into
- * @property {boolean} [log=false] - Enable debug logging
- * @property {EngineControlSettings} [withControls={ active: true, integrated: false }] - Enable scene controls and specify their layout
- * @property {boolean} [autoStart=false] - Automatically start rendering
- */
-
-/**
- * Initialize the MAGE engine
- * @param {MAGEOptions} options
- * @returns {MAGEEngine}
- */
-export function initMAGE({ canvas, log = false, withControls = { active: true, integrated: false }, autoStart = false } = {}) {
+export function initMAGE({ 
+  canvas, 
+  log = false, 
+  withControls: { active = false, integrated = false } = {}, 
+  autoStart = false, 
+} = {}) {
   // Initialize the MAGE Engine with the provided canvas and configuration options.
-  const engine = new MAGEEngine({ canvas, log, withControls, autoStart });
-
-  window.engine = engine; // Expose the engine globally for debugging and external access
+  const engine = new MAGEEngine({ canvas, log, withControls:{ active, integrated }, autoStart });
 
   // Return the initialized engine and controls (if created) for external use.
+  return engine;
+}
+
+export function previewMAGE(canvas, preset, frames) {
+  const engine = MAGEEngine.previewPreset(canvas, preset, frames);
   return engine;
 }

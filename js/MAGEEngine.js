@@ -40,13 +40,10 @@ import { getEmbeddedSkyboxFaces, getRandomSkyboxId, EMBEDDED_SKYBOXES } from './
 import { createSculptureWithGeometry } from 'shader-park-core';
 import { generateshaderparkcode } from './generateshaderparkcode.js';
 
-
-import { Pane } from 'tweakpane';
-
 const controlTipsImageDataUrl = new URL('../resources/controltips.png', import.meta.url).href;
 
 
-const MAGE_VERSION = '1.0.0';
+const MAGE_VERSION = '1.0.3';
 
 /**
  * @typedef {Object} EngineControlSettings
@@ -119,7 +116,11 @@ export class MAGEEngine {
     y: 0,
   };
   #_pendingSkyboxLoad = null;
-  constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {} } = {}) {
+  #previewMode = false;
+  #previewFrameCount = 0;
+  #previewFramesTarget = 0;
+  #isLowQualityMode = false;
+  constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {}, lowQualityMode = false } = {}) {
     // console log version
     if (log) {
       console.log(`Initializing MAGE Engine v${this.#engineVersion}...`);
@@ -223,10 +224,76 @@ export class MAGEEngine {
       this.start();
     }
 
+    if (lowQualityMode) {
+      this.#isLowQualityMode = true;
+    }
+
     // this._previewCaptureQueue = Promise.resolve();
     // this.savedPresets = [];
     // this._presetGalleryWindow = null;
   }
+
+  /**
+   * Enables preview mode for a preset. The engine will load the preset, simulate audio input for N frames to demonstrate the visualizer, then automatically reset.
+   * @param {MAGEPreset} preset - The preset to preview.
+   * @param {number} [frameCount=120] - Number of frames to preview (default 120 = ~2 seconds at 60fps).
+   * @returns {void}
+   */
+  enablePreviewMode(preset, frameCount = 120) {
+    this.#previewMode = true;
+    this.#previewFrameCount = 0;
+    this.#previewFramesTarget = Math.max(1, Number.parseInt(`${frameCount}`, 10) || 120);
+    this.loadPreset(preset);
+  }
+
+  static previewPreset(canvas, preset, frameCount = 120) {
+    const previewInstance = new MAGEEngine({
+      canvas: canvas,
+      log: false,
+      autoStart: true,
+      withControls: { active: false, integrated: false },
+      presetPreview: preset,
+    });
+    previewInstance.enablePreviewMode(preset, frameCount);
+    return previewInstance;
+  }
+
+  /**
+   * Disables preview mode and resets the engine state.
+   * @returns {void}
+   */
+  disablePreviewMode() {
+    this.#previewMode = false;
+    this.#previewFrameCount = 0;
+    this.#previewFramesTarget = 0;
+  }
+  /**
+   * Simulates audio input for preview mode. Generates a synthetic FFT-like pattern to demonstrate visualizer reactivity.
+   * @private
+   */
+  #_simulatePreviewAudio() {
+    if (!this.#state) {
+      console.warn('Cannot simulate preview audio: engine state not initialized.');
+      return;
+    }
+
+    // Simulate a sine wave modulated by frame count for dynamic visual feedback
+    const t = this.#previewFrameCount / this.#previewFramesTarget;
+    const bass = Math.sin(t * Math.PI * 3) * 0.65 + 0.2; // oscillates between 0.2 and 0.7
+    const mid = 0;
+    
+    // Apply to state as if audio were playing
+    const bass_analysis = Math.pow(bass * this.#state.minimizing_factor, this.#state.power_factor);
+    const mid_analysis = Math.pow(mid * this.#state.minimizing_factor, this.#state.power_factor);
+    
+    const delta = 1 / 60; // assume 60fps
+    this.#state.currAudio = bass_analysis + Math.sin(this.#state.time) * this.#state.size * 0.1 + 0.05
+    this.#state.size =
+      (1 - this.#state.easing_speed) * this.#state.currAudio +
+      this.#state.easing_speed * this.#state.size +
+      this.#state.volume_multiplier * 0.01;
+  }
+
   /**
    * Initializes the MAGE Engine, creating the Three.js scene, camera, renderer, and other core components.
    * @return {void}
@@ -525,7 +592,7 @@ export class MAGEEngine {
     }
 
     this.#canvas = newCanvas;
-    this._createRenderer();
+    this.#_createRenderer();
     if (this.#scene && this.#camera) {
       this.#composer = this.fx.applyPostProcessing(this.#scene, this.#renderer, this.#camera, this.#composer);
       this.#_syncSobelResolution();
@@ -1254,6 +1321,19 @@ export class MAGEEngine {
 
   }
 
+  // similar to dispose, but reinitialize the engine with the exact same state as before,
+  // with time = 0 to allow for engine preview where the preview resets after a couple seconds
+  // and replays the same preset from the beginning, but without the overhead of creating a whole new engine instance and reloading all assets.
+  reset() {
+    if (!this.#isRunning || this.#isDisposed) {
+      if (this.log) console.warn('Cannot reset engine: MAGEEngine is not running or has been disposed.');
+      return;
+    }
+    this.#state.time = 0.0;
+    //this.loadPreset(this.#currentPreset);
+    this.start();
+  }
+
   // PRIVATE METHODS
   #_waitFrames(frameCount = 1) {
     const total = Math.max(1, Number.parseInt(`${frameCount}`, 10) || 1);
@@ -1935,6 +2015,37 @@ export class MAGEEngine {
     this.#viewportToast.el = null;
   }
 
+  #_createRenderer() {
+    const { width, height } = this.#_getViewportSize();
+    const rendererOptions = {};
+    if (this.#canvas) {
+      rendererOptions.canvas = this.#canvas;
+    }
+
+    if (this.#isLowQualityMode) {
+      rendererOptions.powerPreference = 'low-power';
+    }
+    
+    this.#renderer = new WebGLRenderer(rendererOptions);
+    
+    if (this.#isLowQualityMode) {
+      this.#renderer.setSize(Math.max(1, Math.floor(width / 4)), Math.max(1, Math.floor(height / 4)), false);
+    } else {
+      this.#renderer.setSize(width, height, false);
+    }
+    
+    if (this.#isLowQualityMode) {
+      this.#renderer.setPixelRatio(0.25);
+    } else {
+      this.#renderer.setPixelRatio(window.devicePixelRatio || 1);
+    }
+
+    this.#renderer.setClearColor(new Color(1, 1, 1), 0);
+    // Match original renderer tone mapping exposure behavior
+    this.#renderer.toneMappingExposure = this.fx.toneMapping.exposure;
+    this.#renderer.outputColorSpace = SRGBColorSpace;
+  }
+
   #_createScene() {
     const { width, height } = this.#_getViewportSize();
 
@@ -1951,17 +2062,7 @@ export class MAGEEngine {
     this.#camera.add(this.#listener);
 
     // initialize renderer
-    const rendererOptions = {};
-    if (this.#canvas) {
-      rendererOptions.canvas = this.#canvas;
-    }
-    this.#renderer = new WebGLRenderer(rendererOptions);
-    this.#renderer.setSize(width, height, false);
-    this.#renderer.setPixelRatio(window.devicePixelRatio);
-    this.#renderer.setClearColor(new Color(1, 1, 1), 0);
-    // Match original renderer tone mapping exposure behavior
-    this.#renderer.toneMappingExposure = this.fx.toneMapping.exposure;
-    this.#renderer.outputColorSpace = SRGBColorSpace;
+    this.#_createRenderer();
 
     if (!this.#canvas) {
       // Match existing behavior: append the canvas to the body when not provided
@@ -2003,6 +2104,7 @@ export class MAGEEngine {
     this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default'), addToHistory: true });
     this.#_loadSkybox({ type: 'preset', presetId: 6 });
     this.#_updateVisualizer();
+    this.#currentPreset = this.toPreset();
   }
 
   #_loadDefaultPreset() {
@@ -2169,13 +2271,18 @@ export class MAGEEngine {
       mid_input = mid_analysis + delta * this.#state.base_speed;
     }
 
-    // add audio input to states
-    const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1;
-    this.#state.currAudio = bass_input + val * this.#state.base_speed + delta * this.#state.base_speed;
-    this.#state.size =
-      (1 - this.#state.easing_speed) * this.#state.currAudio +
-      this.#state.easing_speed * this.#state.size +
-      this.#state.volume_multiplier * 0.01;
+    // If in preview mode, simulate audio instead of reading from actual audio source
+    if (this.#previewMode) {
+      this.#_simulatePreviewAudio();
+    } else {
+      // add audio input to states
+      const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1;
+      this.#state.currAudio = bass_input + val * this.#state.base_speed + delta * this.#state.base_speed;
+      this.#state.size =
+        (1 - this.#state.easing_speed) * this.#state.currAudio +
+        this.#state.easing_speed * this.#state.size +
+        this.#state.volume_multiplier * 0.01;
+    }
 
     // Keep controls authoritative for camera motion, then apply tilt orientation once.
     this.#controls.update();
@@ -2194,6 +2301,15 @@ export class MAGEEngine {
         this.#viewportToast.visible = false;
         this.#viewportToast.el.style.opacity = '0';
         this.#viewportToast.el.style.display = 'none';
+      }
+    }
+
+    // Check if preview mode should end
+    if (this.#previewMode) {
+      this.#previewFrameCount += 1;
+      if (this.#previewFrameCount >= this.#previewFramesTarget) {
+        this.#previewFrameCount = 0;
+        this.reset();
       }
     }
 
