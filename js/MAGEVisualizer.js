@@ -93,6 +93,13 @@ export class MAGEVisualizer {
     });
   }
 
+  getActiveShader() {
+    if (this.shaderIndex >= 0 && this.shaderIndex < this.shaders.length) {
+      return this.shaders[this.shaderIndex].shader;
+    }
+    return null;
+  }
+
   previousShader() {
     if (this.shaders.length <= 1) {
       return;

@@ -279,7 +279,7 @@ export class MAGEEngine {
 
     // Simulate a sine wave modulated by frame count for dynamic visual feedback
     const t = this.#previewFrameCount / this.#previewFramesTarget;
-    const bass = Math.sin(t * Math.PI * 3) * 0.65 + 0.2; // oscillates between 0.2 and 0.7
+    const bass = Math.sin(t * Math.PI * 3.5) * 0.65 + 0.2; // oscillates between 0.2 and 0.7
     const mid = 0;
     
     // Apply to state as if audio were playing
@@ -319,6 +319,10 @@ export class MAGEEngine {
     if (!this.#currentPreset && !this.#visualizer.mesh) {
       this.#_loadDefaultPreset();
     }
+  }
+
+  getActiveShader() {
+    return this.#visualizer.getActiveShader();
   }
 
   /**
@@ -504,6 +508,11 @@ export class MAGEEngine {
     );
   }
 
+  swapShader(newShader) {
+    this.#visualizer.load({ shader: newShader, addToHistory: true });
+    this.#_updateVisualizer();
+  }
+
   /**
    * Loads a preset into the engine.
    * @param {MAGEPreset} presetInput - The preset input to load.
@@ -576,7 +585,7 @@ export class MAGEEngine {
     } else {
       this.#controls.enabled = false;
     }
-
+    this.#_updateVisualizer();
     return preset;
   }
 
@@ -2035,7 +2044,7 @@ export class MAGEEngine {
     }
     
     if (this.#isLowQualityMode) {
-      this.#renderer.setPixelRatio(0.25);
+      this.#renderer.setPixelRatio(0.1);
     } else {
       this.#renderer.setPixelRatio(window.devicePixelRatio || 1);
     }
@@ -2211,8 +2220,6 @@ export class MAGEEngine {
     this.#rtScene = new Scene();
     this.#rtCamera = this.#camera;
     this.#rtScene.add(mesh.clone());
-
-    if (this.log) console.log('Visualizer Loaded!');
   }
 
   #_render = () => {
@@ -2329,7 +2336,7 @@ export class MAGEEngine {
   }
 
   #_growVisualizer() {
-    this.#state.size += 0.03 * (1 - this.#state.easing_speed + 0.01);
+    this.#state.size += 0.035 * (1 - this.#state.easing_speed + 0.01);
   }
 
   #_isPointerNearVisualizerCenter(maxDistanceNdc = 0.35) {

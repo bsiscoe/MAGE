@@ -34,6 +34,7 @@
   },
   "homepage": "https://github.com/bsiscoe/MAGE#readme",
   "dependencies": {
+    "@notrac/mage": "file:notrac-mage-1.0.3.tgz",
     "shader-park-core": "npm:@mage-engine/shader-park-patch@^0.2.8-patched",
     "three": "^0.183.2",
     "vite": "^8.0.0"

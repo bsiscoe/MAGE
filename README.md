@@ -55,6 +55,10 @@ The generated declaration file is [dist/mage-engine.d.ts](dist/mage-engine.d.ts)
 
 Initializes and returns a `MAGEEngineAPI` instance.
 
+### `previewMAGE(canvas, MAGEPreset, frameCount)
+
+Initializes a non-interactable MAGE instance that loads the given preset and shows audio response without input.
+
 **Options:**
 - `canvas?: HTMLCanvasElement` - Target canvas element for rendering.
 - `withControls?: { active?: boolean; integrated?: boolean }` - Enables controls. Defaults to `{ active: true, integrated: false }`.
@@ -132,6 +136,9 @@ const thumbnail = await engine.captureThumbnail(preset, {
 	quality: 0.84,
 	settleFrames: 2,
 });
+const previewCanvas = ...
+const magePreset = ...
+const previewEngine = previewMAGE(previewCanvas, magePreset, 120) // renders the preview for 120 frames before looping
 ```
 
 ### Effect API
