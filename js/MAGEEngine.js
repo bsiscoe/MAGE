@@ -2434,13 +2434,13 @@ export class MAGEEngine {
       return;
     }
 
-    // if (!bridge) {
-    //   // If no bridge, use defaults that allow interaction when pointer is over the canvas
-    //   if (this.log) console.warn('No input bridge available; falling back to mouse events for viewport interaction.');
-    //   const input = this.#_tryToGetInputsFromMouseEvents();
-    //   this.attachInputSource(input);
-    //   return;
-    // }
+    if (!bridge) {
+      // If no bridge, use defaults that allow interaction when pointer is over the canvas
+      if (this.log) console.warn('No input bridge available; falling back to mouse events for viewport interaction.');
+      const input = this.#_tryToGetInputsFromMouseEvents();
+      this.attachInputSource(input);
+      return;
+    }
 
     // use easing and linear interpolation to smoothly animate mouse this.fx
     this.#state.pointerDown = 0.1 * this.#state.currPointerDown + 0.9 * this.#state.pointerDown;
