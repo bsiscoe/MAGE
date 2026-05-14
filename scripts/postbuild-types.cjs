@@ -352,6 +352,15 @@ export interface MAGEEngineAPI {
    * host application, and it is not a mandatory feature for all MAGE engine integrations.
    */
   openPresetDock(): void;
+  /**
+   * Randomizes the visualizer shader by generating a new shader using the built-in generator and 
+   * loading it into the visualizer. This method can be used to quickly explore different visual 
+   * styles and effects by generating random shaders without needing to manually create or load
+   * specific shader code. When called, it will replace the current shader in the visualizer with
+   * a new randomly generated one, allowing users to discover new and interesting visual configurations with ease.
+   * @returns {void}
+   */
+  randomizeVisualizer(): void;
 }
 
 /**
