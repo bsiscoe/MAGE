@@ -109,6 +109,49 @@ Initializes a non-interactable MAGE instance that loads the given preset and sho
 - `attachInputSource(inputSource?)`
 - `detachInputSource()`
 
+#### Custom input bridge
+
+If your app owns pointer handling, use the bridge helpers instead of sending only `clientX` / `clientY`.
+They mirror the engine's built-in viewport bridge, including tooltip updates, wheel, UI toggles, and click-to-reload.
+
+```javascript
+import {
+	initMAGE,
+	createDomInputSource,
+	createReactPointerHandlers,
+} from '@notrac/mage';
+
+const engine = initMAGE({
+	canvas: document.getElementById('visualizer'),
+	withControls: { active: true, integrated: false },
+	autoStart: true,
+});
+
+// DOM-driven host input.
+engine.attachInputSource(
+	createDomInputSource({
+		engine,
+		uiSelectors: ['.tp-dfwv', '.mage-dock-launcher'],
+		onUpdateTooltip: ({ visible, x, y }) => {
+			// Optional: custom tooltip UI hook.
+			console.log('tooltip', visible, x, y);
+		},
+	}),
+);
+
+// React-driven pointer handlers.
+const handlers = createReactPointerHandlers(engine, {
+	uiSelectors: ['.tp-dfwv', '.mage-dock-launcher'],
+});
+
+// Example:
+// <div {...handlers} />
+// <canvas {...handlers} />
+
+// Left click on the visualizer requests a reload.
+// Middle/right click toggle UI, wheel changes shader, and tooltip visibility follows the engine's bridge logic.
+```
+
 #### Example Usage
 
 ```javascript

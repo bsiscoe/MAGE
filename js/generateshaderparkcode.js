@@ -132,15 +132,6 @@ const CODEGEN_BLOCK_SPEC = Object.freeze({
   }),
 });
 
-const INPUT_BINDING_FORMULAS = Object.freeze({
-  size: 'size = input()',
-  pointerDown: 'pointerDown = input()',
-  mouseX: 'mx = mouse.x',
-  mouseY: 'my = mouse.y',
-  time: 't = time * timeScale + timeOffset',
-  baseSize: 'baseSize = max(minBaseSize, baseSizeBias + size * audioGain + pointerDown * pressGain)',
-});
-
 export const SHADER_FAMILIES = Object.freeze(['ORB', 'BLOB', 'GRID', 'HELIX', 'HYBRID', 'COMPLEX']);
 export const SIGNATURE_STYLES = Object.freeze(['clean_minimal', 'organic_reactor', 'geometric_ritual', 'helix_engine']);
 
@@ -181,10 +172,6 @@ export function getShaderParkWhitelistSpec() {
 
 export function getCodegenBlockSpec() {
   return CODEGEN_BLOCK_SPEC;
-}
-
-export function getInputBindingFormulas() {
-  return INPUT_BINDING_FORMULAS;
 }
 
 function clampRange(value, min, max) {
@@ -655,7 +642,6 @@ function createParameterGraph(seed, complexity = 0.58, forcedFamily = null, forc
     construction,
     geometry: familySchema.geometry,
     constraints: familySchema.constraints,
-    formulas: INPUT_BINDING_FORMULAS,
     blockSpec: CODEGEN_BLOCK_SPEC,
   };
 }
@@ -676,16 +662,24 @@ function buildTransformBlock(ir, node, nodeIndex) {
   const t = ir.transforms;
   const phase = formatFloat(node.phase + t.phase);
   const wobble = formatFloat(node.wobble * 0.5);
+  
+  // Mid modulates wobble frequency (meso layer: structural motion)
+  const wobbleFreqModulated = `(${formatFloat(node.wobbleFreq)} * (0.6 + mid * 1.0))`;
+  
+  // Mid also modulates rotation intensity (meso layer: rotational flow)
+  const rayYawModulated = `${formatFloat(t.rayYaw)} * (0.75 + mid * 0.5)`;
+  const rayPitchModulated = `${formatFloat(t.rayPitch)} * (0.75 + mid * 0.5)`;
+  
   return {
     type: 'TransformBlock',
     operations: [
       'reset();',
-      `rotateY(rayDir.x * ${formatFloat(t.rayYaw)} + mx * ${formatFloat(t.mouseYaw)} + sin(t * ${formatFloat(t.yawWaveFreq)}) * ${formatFloat(t.yawWaveAmp)});`,
-      `rotateX(rayDir.y * ${formatFloat(t.rayPitch)} + my * ${formatFloat(t.mousePitch)} + cos(t * ${formatFloat(t.pitchWaveFreq)}) * ${formatFloat(t.pitchWaveAmp)});`,
+      `rotateY(rayDir.x * ${rayYawModulated} + mx * ${formatFloat(t.mouseYaw)} + sin(t * ${formatFloat(t.yawWaveFreq)}) * ${formatFloat(t.yawWaveAmp)});`,
+      `rotateX(rayDir.y * ${rayPitchModulated} + my * ${formatFloat(t.mousePitch)} + cos(t * ${formatFloat(t.pitchWaveFreq)}) * ${formatFloat(t.pitchWaveAmp)});`,
       `rotateZ(rayDir.z * ${formatFloat(t.rayRoll)} + sin(t * ${formatFloat(t.rollFreq)} + ${formatFloat(t.phase)}) * ${formatFloat(t.rollAmp)});`,
-      `rotateX(${formatFloat(node.rotate[0])} + sin(t * ${formatFloat(node.wobbleFreq)} + ${phase}) * ${wobble});`,
-      `rotateY(${formatFloat(node.rotate[1])} + cos(t * ${formatFloat(node.wobbleFreq)} + ${phase}) * ${wobble});`,
-      `rotateZ(${formatFloat(node.rotate[2])} + nsin(t * ${formatFloat(node.wobbleFreq)} + ${phase}) * ${wobble});`,
+      `rotateX(${formatFloat(node.rotate[0])} + sin(t * ${wobbleFreqModulated} + ${phase}) * ${wobble});`,
+      `rotateY(${formatFloat(node.rotate[1])} + cos(t * ${wobbleFreqModulated} + ${phase}) * ${wobble});`,
+      `rotateZ(${formatFloat(node.rotate[2])} + nsin(t * ${wobbleFreqModulated} + ${phase}) * ${wobble});`,
     ],
   };
 }
@@ -693,11 +687,16 @@ function buildTransformBlock(ir, node, nodeIndex) {
 function buildSurfaceBlock(node, spaceVar) {
   const operations = [];
   const expandTerms = [];
+  
+  // Treble modulates expand amplitude (micro layer: detail and sparkle)
+  const expandAmpModulated = `${formatFloat(node.expandAmp)} * (0.45 + treble * 1.2)`;
+  const pulseAmpModulated = `${formatFloat(node.pulseAmp)} * (0.5 + treble * 1.0)`;
+  
   if (node.expandAmp > 0.0001) {
-    expandTerms.push(`noise(${spaceVar} * ${formatFloat(node.noiseFreq)}) * ${formatFloat(node.expandAmp)}`);
+    expandTerms.push(`noise(${spaceVar} * ${formatFloat(node.noiseFreq)}) * ${expandAmpModulated}`);
   }
   if (node.pulseAmp > 0.0001) {
-    expandTerms.push(`nsin(t * ${formatFloat(node.pulseFreq)} + ${formatFloat(node.phase)}) * ${formatFloat(node.pulseAmp)}`);
+    expandTerms.push(`nsin(t * ${formatFloat(node.pulseFreq)} + ${formatFloat(node.phase)}) * ${pulseAmpModulated}`);
   }
   if (expandTerms.length > 0) {
     operations.push(`expand(${expandTerms.join(' + ')});`);
@@ -715,22 +714,26 @@ function buildSurfaceBlock(node, spaceVar) {
 function buildMaterialBlock(ir, nodeIndex) {
   const m = ir.material;
   const layerPhase = formatFloat(nodeIndex * m.layerShift);
-  const cR = `min(1.0, max(0.0, ${formatFloat(m.baseColor[0])} + rayDir.x * ${formatFloat(0.22 + m.mouseMix)} + sin(t * ${formatFloat(m.waveFreq[0])} + ${layerPhase}) * ${formatFloat(m.waveAmp[0])}))`;
-  const cG = `min(1.0, max(0.0, ${formatFloat(m.baseColor[1])} + rayDir.y * ${formatFloat(0.22 + m.mouseMix)} + cos(t * ${formatFloat(m.waveFreq[1])} + ${layerPhase}) * ${formatFloat(m.waveAmp[1])}))`;
-  const cB = `min(1.0, max(0.0, ${formatFloat(m.baseColor[2])} + rayDir.z * ${formatFloat(0.22 + m.mouseMix)} + nsin(t * ${formatFloat(m.waveFreq[2])} + ${layerPhase}) * ${formatFloat(m.waveAmp[2])}))`;
+  const centroidShift = `(spectralCentroid - 0.5) * 0.32`;
+  const centroidContrast = `0.85 + abs(spectralCentroid - 0.5) * 0.7`;
+  const cR = `min(1.0, max(0.0, (${formatFloat(m.baseColor[0])} + ${centroidShift}) * ${centroidContrast} + rayDir.x * ${formatFloat(0.22 + m.mouseMix)} + sin(t * ${formatFloat(m.waveFreq[0])} + ${layerPhase}) * ${formatFloat(m.waveAmp[0])}))`;
+  const cG = `min(1.0, max(0.0, (${formatFloat(m.baseColor[1])} + (spectralCentroid - 0.5) * 0.05) * ${centroidContrast} + rayDir.y * ${formatFloat(0.22 + m.mouseMix)} + cos(t * ${formatFloat(m.waveFreq[1])} + ${layerPhase}) * ${formatFloat(m.waveAmp[1])}))`;
+  const cB = `min(1.0, max(0.0, (${formatFloat(m.baseColor[2])} - ${centroidShift}) * ${centroidContrast} + rayDir.z * ${formatFloat(0.22 + m.mouseMix)} + nsin(t * ${formatFloat(m.waveFreq[2])} + ${layerPhase}) * ${formatFloat(m.waveAmp[2])}))`;
 
   return {
     type: 'MaterialBlock',
     operations: [
       `color(${cR}, ${cG}, ${cB});`,
-      `metal(max(0.0, min(1.0, ${formatFloat(m.metal)} + pointerDown * 0.12)));`,
-      `shine(max(0.0, min(1.0, ${formatFloat(m.shine)} + size * 0.05)));`,
+      `metal(max(0.0, min(1.0, ${formatFloat(m.metal)} * (0.7 + energy * 0.6) + pointerDown * 0.12)));`,
+      `shine(max(0.0, min(1.0, ${formatFloat(m.shine)} * (0.8 + energy * 0.4) + size * 0.05)));`,
     ],
   };
 }
 
 function makeSizeExpr(node) {
-  return `max(${formatFloat(node.minSize)}, baseSize * ${formatFloat(node.scale)} + pointerDown * ${formatFloat(node.pointerGain)} + sin(t * ${formatFloat(node.wobbleFreq)} + ${formatFloat(node.phase)}) * ${formatFloat(node.wobble)})`;
+  // Bass modulates geometry scale (macro layer: large deformation)
+  const bassScale = `(0.8 + bass * 0.4)`;
+  return `max(${formatFloat(node.minSize)}, baseSize * ${formatFloat(node.scale)} * ${bassScale} + pointerDown * ${formatFloat(node.pointerGain)} + sin(t * ${formatFloat(node.wobbleFreq)} + ${formatFloat(node.phase)}) * ${formatFloat(node.wobble)})`;
 }
 
 function buildGeometryBlock(node) {
@@ -763,18 +766,27 @@ function buildGeometryBlock(node) {
 function emitShaderFromIR(ir) {
   const g = ir.globalSettings;
   const i = ir.inputBindings;
+  
+  // Initialize shader with global settings and input bindings
   const lines = [
     `setGeometryQuality(${g.geometryQuality});`,
     `setStepSize(${formatFloat(g.stepSize)});`,
     `setMaxIterations(${g.maxIterations});`,
     'let size = input();',
     'let pointerDown = input();',
+    'let bass = input();',
+    'let mid = input();',
+    'let treble = input();',
+    'let energy = input();',
+    'let spectralCentroid = input();',
+    'let energyTrend = input();',
     'let mx = mouse.x;',
     'let my = mouse.y;',
     'let rayDir = normalize(getRayDirection());',
     'let s = getSpace();',
     `let t = time * ${formatFloat(i.timeScale)} ${formatSignedLiteral(i.timeOffset)};`,
-    `let baseSize = max(${formatFloat(i.minBaseSize)}, ${formatFloat(i.baseSizeBias)} + size * ${formatFloat(i.audioGain)} + pointerDown * ${formatFloat(i.pressGain)});`,
+    // Energy modulates overall animation intensity and baseSize scaling
+    `let baseSize = max(${formatFloat(i.minBaseSize)}, ${formatFloat(i.baseSizeBias)} + size * ${formatFloat(i.audioGain)} * (0.8 + energy * 0.4) + pointerDown * ${formatFloat(i.pressGain)});`,
   ];
 
   ir.geometry.nodes.forEach((node, index) => {

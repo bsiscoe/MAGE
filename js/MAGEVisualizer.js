@@ -3,8 +3,8 @@ import { BoxGeometry } from 'three';
 import { createSculptureWithGeometry } from "shader-park-core";
 
 export class MAGEVisualizer {
-  constructor(engineState) {
-    this.engineState = engineState;
+  constructor(engine) {
+    this.engine = engine;
     this.seed = 0;
     this.shaderIndex = -1;
     this.shaders = [];
@@ -33,7 +33,7 @@ export class MAGEVisualizer {
    * if loading failed due to invalid input.
    */
 
-  load({ shader = null, addToHistory = true, clearHistory = false } = {}) {
+  load({ shader = null, addToHistory = true, clearHistory = false } = {}){
 
     // If shader input is missing/invalid, generate one.
     let finalShaderCode = null;
@@ -56,7 +56,7 @@ export class MAGEVisualizer {
       finalShaderCode = generateshaderparkcode(this, 'generator_v1.5');
     }
     if (!finalShaderCode) {
-      if (engine.log) console.warn('Invalid shader code input; failed to load visualizer.', { shaderCode });
+      throw new Error('Failed to load shader: No valid shader code provided and generation failed.');
       return null;
     }
     if (clearHistory) {
@@ -70,32 +70,44 @@ export class MAGEVisualizer {
         timestamp: Date.now(),
       });
       this.shaderIndex = this.shaders.length - 1;
-      if (engine.log) console.log('Active shaders: ', this.shaders);
     }
 
-    if (engine.log) console.log('Loaded visualizer with shader:', finalShaderCode);
     this.createMesh(finalShaderCode);
   }
 
   createMesh(shaderCode) {
-    const state = this.engineState;
+    const state = this.engine.state;
     const geometry = new BoxGeometry(20000, 20000, 20000);
+    
+    // Only pass audio params if the shader declares them
+    const hasAudioInputs = shaderCode &&
+      shaderCode.includes('let bass = input()') &&
+      shaderCode.includes('let mid = input()') &&
+      shaderCode.includes('let treble = input()') &&
+      shaderCode.includes('let energy = input()') &&
+      shaderCode.includes('let spectralCentroid = input()') &&
+      shaderCode.includes('let energyTrend = input()');
+    
     this.mesh = createSculptureWithGeometry(geometry, shaderCode, () => {
-          return {
-            time: state.time,
-            size: state.size,
-            pointerDown: state.pointerDown,
-            mouse: state.mouse,
-            _scale: this.scale,
-            bass: state.currBass ?? 0,
-            mid: state.currMid ?? 0,
-            treble: state.currTreble ?? 0,
-            energy: state.currEnergy ?? 0,
-            centroid: state.currCentroid ?? 0,
-            energyTrend: state.currEnergyTrend ?? 0,
-            audioMappingIntensity: state.audioMappingIntensity ?? 1,
-            amplitude: state.currAudio ?? 0,
+          const callback = {
+            time: state.time ?? 0,
+            size: state.size ?? 0,
+            pointerDown: state.pointerDown ?? 0,
+            mouse: state.mouse ?? { x: 0, y: 0 },
+            _scale: this.scale ?? 1,
           };
+          
+          // Only add audio params if shader declares them (allows legacy shaders to work)
+          if (hasAudioInputs) {
+            callback.bass = state.currBass ?? 0;
+            callback.mid = state.currMid ?? 0;
+            callback.treble = state.currTreble ?? 0;
+            callback.energy = state.currEnergy ?? 0;
+            callback.spectralCentroid = state.currCentroid ?? 0;
+            callback.energyTrend = state.currEnergyTrend ?? 0;
+          }
+          
+          return callback;
     });
   }
 

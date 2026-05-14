@@ -60,9 +60,17 @@ export function normalizeAudioFeatures(freqData, previousEnergy = 0) {
     };
   }
 
-  const bass = averageBand(freqData, 1, 3);
-  const mid = averageBand(freqData, 4, 8);
-  const treble = averageBand(freqData, 9, 20);
+  // since sample rate is not always known, use logarithmic scaling of human hearing to approximate based on bin numbers
+  const totalBins = freqData.length;
+
+  const bassStart = Math.floor(totalBins * 0.001); // Bottom edge (~20Hz)
+  const bassEnd   = Math.floor(totalBins * 0.011); // Top of bass (~250Hz)
+  const midEnd    = Math.floor(totalBins * 0.166); // Top of mids (~4000Hz)
+  const trebleEnd = Math.floor(totalBins * 0.666); // Top of musical treble (~16000Hz)
+
+  const bass   = averageBand(freqData, bassStart, bassEnd);
+  const mid    = averageBand(freqData, bassEnd + 1, midEnd);
+  const treble = averageBand(freqData, midEnd + 1, trebleEnd);
 
   let sumSquares = 0;
   let weightedSum = 0;
@@ -89,3 +97,6 @@ export function normalizeAudioFeatures(freqData, previousEnergy = 0) {
     energyTrend,
   };
 }
+
+// Export input bridge adapters (helps postbuild JSDoc/type extraction)
+export { createDomInputSource, createReactPointerHandlers } from './inputBridgeAdapter.js';

@@ -27,7 +27,7 @@
   BoxGeometry,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
+import { createDomInputSource, createReactPointerHandlers } from './helpers.js';
 import { MAGEVisualizer } from './MAGEVisualizer.js';
 import { MAGEPreset } from './MAGEPreset.js';
 import { MAGEEffects } from './MAGEFx.js';
@@ -121,6 +121,7 @@ export class MAGEEngine {
   #previewFrameCount = 0;
   #previewFramesTarget = 0;
   #isLowQualityMode = false;
+  #fftSize = null;
   constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {}, lowQualityMode = false } = {}) {
     // console log version
     if (log) {
@@ -163,8 +164,6 @@ export class MAGEEngine {
     this.#playbackTime = 0;
     this.#isReversed = false;
 
-    this.#visualizer = new MAGEVisualizer(this.state);
-
     this.#inputs = {
       currMouse: new Vector3(),
       pointerDown: 0.0,
@@ -197,6 +196,8 @@ export class MAGEEngine {
       camOrientationMode: 0,
       camOrientationSpeed: 1.0,
     };
+    
+    this.#visualizer = new MAGEVisualizer(this);
 
     this.#timeIncreasing = true;
     this.#screenShake = this.#_createScreenShake();
@@ -285,21 +286,18 @@ export class MAGEEngine {
       return;
     }
 
-    // Simulate a sine wave modulated by frame count for dynamic visual feedback
+    // Simulate a sine wave modulated by frame count for dynamic visual feedback.
     const t = this.#previewFrameCount / this.#previewFramesTarget;
     const bass = Math.sin(t * Math.PI * 3.5) * 0.65 + 0.2; // oscillates between 0.2 and 0.7
-    const mid = 0;
-    
-    // Apply to state as if audio were playing
-    const bass_analysis = Math.pow(bass * this.#state.minimizing_factor, this.#state.power_factor);
-    const mid_analysis = Math.pow(mid * this.#state.minimizing_factor, this.#state.power_factor);
-    
-    const delta = 1 / 60; // assume 60fps
-    this.#state.currAudio = bass_analysis + Math.sin(this.#state.time) * this.#state.size * 0.1 + 0.05
-    this.#state.size =
-      (1 - this.#state.easing_speed) * this.#state.currAudio +
-      this.#state.easing_speed * this.#state.size +
-      this.#state.volume_multiplier * 0.01;
+    const mid = Math.sin(t * Math.PI * 2.2) * 0.45 + 0.25;
+    const treble = Math.sin(t * Math.PI * 1.8) * 0.4 + 0.35;
+
+    // Apply audio parameters with easing; size stays independent.
+    const mix = 1 - this.#state.easing_speed;
+    this.#state.currBass += (bass - this.#state.currBass) * mix;
+    this.#state.currMid += (mid - this.#state.currMid) * mix;
+    this.#state.currTreble += (treble - this.#state.currTreble) * mix;
+    this.#state.currAudio = this.#state.currBass;
   }
 
   /**
@@ -329,8 +327,16 @@ export class MAGEEngine {
     }
   }
 
-  getActiveShader() {
+  get activeShader() {
     return this.#visualizer.getActiveShader();
+  }
+
+  set fftSize(size) {
+    this.#fftSize = Number.parseInt(`${size}`, 2048) || 2048;
+  }
+
+  get fftSize() {
+    return this.#fftSize;
   }
 
   get state() {
@@ -379,10 +385,15 @@ export class MAGEEngine {
     this.#state.currEnergyTrend += (normalizedAudio.energyTrend - this.#state.currEnergyTrend) * mix;
 
     this.#state.currAudio = this.#state.currBass;
-    this.#state.size =
-      (1 - this.#state.easing_speed) * this.#state.currAudio +
-      this.#state.easing_speed * this.#state.size +
-      this.#state.volume_multiplier * 0.01;
+  }
+
+  /**
+   * Randomizes the visualizer shader
+   * @returns {void}
+   *  
+  */
+  randomizeVisualizer() {
+      this.#visualizer.load();
   }
 
   /**
@@ -520,7 +531,7 @@ export class MAGEEngine {
     this.#reversedAudio.setLoop(false);
 
     // create an AudioAnalyser, passing in the sound and desired fftSize
-    this.#audioAnalyser = new AudioAnalyser(this.#audio, 64);
+    this.#audioAnalyser = new AudioAnalyser(this.#audio, this.#fftSize || 2048);
 
     const audioLoader = new AudioLoader();
     const fileInput = document.getElementById('file');
@@ -706,7 +717,7 @@ export class MAGEEngine {
     const preset = {
       version: MAGE_VERSION,
       visualizer: {
-        shader: this.#visualizer.shader,
+        shader: this.activeShader,
         skyboxPreset: this.#visualizer.skyboxPreset,
         scale: this.#visualizer.scale,
       },
@@ -826,6 +837,21 @@ export class MAGEEngine {
 
     this.#externalInputBridge = this.#_createInputBridgeState(this.#viewportInputBridge);
     this.#viewportInputBridge = this.#externalInputBridge;
+
+    if (inputSource && typeof inputSource === 'object') {
+      if (typeof inputSource.onToggleUI === 'function') {
+        this.#externalInputBridge.onToggleUI = inputSource.onToggleUI;
+      }
+      if (typeof inputSource.onHideQuickPresets === 'function') {
+        this.#externalInputBridge.onHideQuickPresets = inputSource.onHideQuickPresets;
+      }
+      if (typeof inputSource.onUpdateTooltip === 'function') {
+        this.#externalInputBridge.onUpdateTooltip = inputSource.onUpdateTooltip;
+      }
+      if (typeof inputSource.detach === 'function') {
+        this.#externalInputBridge.detach = inputSource.detach;
+      }
+    }
 
     if (!inputSource || typeof inputSource !== 'object') {
       return;
@@ -1231,6 +1257,8 @@ export class MAGEEngine {
           bridge.requestToggleUI = true;
         } else if (event.button === 0) {
           bridge.requestResetVisualizer = true;
+        } else if (event.button === 1) {
+          bridge.requestToggleUI = true;
         }
       }, { capture: true, passive: true, signal: controller.signal });
 
@@ -1257,14 +1285,26 @@ export class MAGEEngine {
     if (!engine.#externalInputBridge) {
       engine.#viewportInputBridge = engine.#windowInputBridge;
     } else {
+      // if (typeof engine.#windowInputBridge.onToggleUI === 'function' && typeof engine.#externalInputBridge.onToggleUI !== 'function') {
+      //   engine.#externalInputBridge.onToggleUI = engine.#windowInputBridge.onToggleUI;
+      // }
+      // if (typeof engine.#windowInputBridge.onHideQuickPresets === 'function' && typeof engine.#externalInputBridge.onHideQuickPresets !== 'function') {
+      //   engine.#externalInputBridge.onHideQuickPresets = engine.#windowInputBridge.onHideQuickPresets;
+      // }
+      // if (typeof engine.#windowInputBridge.onUpdateTooltip === 'function' && typeof engine.#externalInputBridge.onUpdateTooltip !== 'function') {
+      //   engine.#externalInputBridge.onUpdateTooltip = engine.#windowInputBridge.onUpdateTooltip;
+      // }
       engine.#viewportInputBridge = engine.#externalInputBridge;
     }
 
-
     // Initialize optional UI layer
     if (engine.#controlSettings?.integrated !== false) {
+      if (engine.log) {
+        console.log('Initializing integrated controls...');
+      }
       const uiController = initControlsUI(engine);
       engine.#uiController = uiController;
+      uiController.toggle();
     }
 
     // replace mouse pointer with control tip UI
@@ -1284,23 +1324,27 @@ export class MAGEEngine {
     tooltipUI.element.innerHTML = `<img src="${controlTipsImageDataUrl}" alt="controls" />`;
     document.body.appendChild(tooltipUI.element);
 
-    engine.#viewportInputBridge.onUpdateTooltip = ({ visible, x, y }) => {
-      tooltipUI.visible = Boolean(visible);
-      tooltipUI.x = Number.isFinite(x) ? x : tooltipUI.x;
-      tooltipUI.y = Number.isFinite(y) ? y : tooltipUI.y;
-    };
+    // engine.#viewportInputBridge.onUpdateTooltip = ({ visible, x, y }) => {
+    //   tooltipUI.visible = Boolean(visible);
+    //   tooltipUI.x = Number.isFinite(x) ? x : tooltipUI.x;
+    //   tooltipUI.y = Number.isFinite(y) ? y : tooltipUI.y;
+    // };
 
     engine.#onAfterFrame = engineInstance => {
       if (typeof previousAfterFrame === 'function') {
         previousAfterFrame(engineInstance);
       }
 
+      const mousex = engineInstance.#viewportInputBridge?.clientX;
+      const mousey = engineInstance.#viewportInputBridge?.clientY;
+      const pointerOverUi = engineInstance.#viewportInputBridge?.pointerOverUi;
+
       if (tooltipUI.visible) {
         // hide regular mouse pointer
         engineInstance.#renderer.domElement.style.cursor = 'none';
         tooltipUI.element.style.display = 'block';
-        tooltipUI.element.style.left = `${tooltipUI.x}px`;
-        tooltipUI.element.style.top = `${tooltipUI.y}px`;
+        tooltipUI.element.style.left = `${mousex}px`;
+        tooltipUI.element.style.top = `${mousey}px`;
       } else {
         tooltipUI.element.style.display = 'none';
         engineInstance.#renderer.domElement.style.cursor = '';
@@ -1335,6 +1379,18 @@ export class MAGEEngine {
     }
   }
 
+  toggleIntegratedControls() {
+    if (!this.#controlSettings.active) {
+      this.initControls();
+    }
+    if (this.#uiController) {
+      this.#uiController.toggle();
+    }
+    else {
+      if (this.log) console.warn('Integrated controls are not available. Please check control settings and initialization.');
+    }
+  }
+
   isRunning() {
     return this.#isRunning;
   }
@@ -1350,6 +1406,10 @@ export class MAGEEngine {
       visualizer: this.#visualizer,
       controlSettings: this.#controlSettings,
     }
+  }
+
+  get state() {
+    return this.#state;
   }
 
   openPresetDock() {
@@ -2185,7 +2245,7 @@ export class MAGEEngine {
   }
 
   #_loadDefaultVisualizer() {
-    this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default', this.audioState), addToHistory: true });
+    this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default'), addToHistory: true });
     this.#_loadSkybox({ type: 'preset', presetId: 6 });
     this.#_updateVisualizer();
     this.#currentPreset = this.toPreset();
@@ -2278,6 +2338,16 @@ export class MAGEEngine {
     this.#rtScene.add(mesh.clone());
   }
 
+  // maintains and bounds a time-based size value that can be used for effects in shaders
+  #_staticAudioUpdate(delta) {
+    const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1; 
+    const update = val * this.#state.base_speed + delta * this.#state.base_speed; 
+    this.#state.size = 
+    (1 - this.#state.easing_speed) * update + 
+    this.#state.easing_speed * this.#state.size + 
+    this.#state.volume_multiplier * 0.01;
+  }
+
   #_render = () => {
     if (this.#isDisposed || !this.#state || !this.#scene || !this.#camera || !this.#renderer) {
       return;
@@ -2303,17 +2373,7 @@ export class MAGEEngine {
       }
     }
 
-    // // animate tab bar (document.title)
-    // const timeCalc = (1 + Math.sin(this.#state.time)) * 10 / 2;
-    // if (this.#audio && this.#audio.isPlaying) {
-    //   if (timeCalc > 5.0) {
-    //     document.title = 'MAGE - Playing Audio...';
-    //   } else {
-    //     document.title = 'MAGE - Playing Audio';
-    //   }
-    // } else {
-    //   document.title = 'MAGE';
-    // }
+    this.#_staticAudioUpdate(delta);
 
     const hasLiveAudio =
       this.#audioAnalyser &&
@@ -2328,16 +2388,6 @@ export class MAGEEngine {
     // If in preview mode, simulate audio instead of reading from actual audio source
     if (this.#previewMode) {
       this.#_simulatePreviewAudio();
-    } else {
-      if (!hasLiveAudio) {
-        // add audio input to states
-        const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1;
-        this.#state.currAudio = val * this.#state.base_speed + delta * this.#state.base_speed;
-        this.#state.size =
-          (1 - this.#state.easing_speed) * this.#state.currAudio +
-          this.#state.easing_speed * this.#state.size +
-          this.#state.volume_multiplier * 0.01;
-      }
     }
 
     // Keep controls authoritative for camera motion, then apply tilt orientation once.
@@ -2489,7 +2539,7 @@ export class MAGEEngine {
 
     if (!bridge) {
       // If no bridge, use defaults that allow interaction when pointer is over the canvas
-      if (this.log) console.warn('No input bridge available; falling back to mouse events for viewport interaction.');
+      console.warn('MAGE WARNING: No input bridge available; falling back to mouse events for viewport interaction.');
       const input = this.#_tryToGetInputsFromMouseEvents();
       this.attachInputSource(input);
       return;
@@ -2553,9 +2603,11 @@ export class MAGEEngine {
 
           const nearCenter = this.#_isPointerNearVisualizerCenter(this.#visualizer.centerClickRadiusNdc);
           if (pixelBuffer[3] > 0 && nearCenter) {
+            this.#tooltipUI.visible = true;
             this.#_growVisualizer();
             this.#visualizer.clickable = true;
           } else {
+            this.#tooltipUI.visible = false;
             this.#visualizer.clickable = false;
           }
         }
@@ -2569,13 +2621,18 @@ export class MAGEEngine {
       this.#visualizer.controllingAudio = false;
     }
 
-    if (typeof bridge.onUpdateTooltip === 'function') {
-      bridge.onUpdateTooltip({
-        visible: this.#visualizer.clickable && this.#visualizer.render_tooltips,
-        x: bridge.clientX,
-        y: bridge.clientY,
-      });
-    }
+    // if (typeof bridge.onUpdateTooltip === 'function') {
+    //   const tooltipVisible = Boolean(
+    //     this.#visualizer.render_tooltips &&
+    //     this.#visualizer.intersected &&
+    //     this.#visualizer.clickable,
+    //   );
+    //   bridge.onUpdateTooltip({
+    //     visible: tooltipVisible,
+    //     x: bridge.clientX,
+    //     y: bridge.clientY,
+    //   });
+    // }
 
     const canTriggerInteraction = this.#visualizer.intersected && this.#visualizer.clickable;
 
@@ -2593,23 +2650,18 @@ export class MAGEEngine {
     }
 
     if (bridge.requestToggleUI) {
-      if (insideViewport && !bridge.pointerOverUi) {
-        if (typeof bridge.onHideQuickPresets === 'function') {
-          bridge.onHideQuickPresets();
-        }
-        if (typeof bridge.onToggleUI === 'function') {
-          bridge.onToggleUI();
-        }
-      }
+      this.toggleIntegratedControls();
       bridge.requestToggleUI = false;
     }
 
     if (bridge.requestResetVisualizer) {
       if (canTriggerInteraction) {
-        this.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false, audioState: this.audioState });
+        this.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false });
         this.#_updateVisualizer();
         if (typeof bridge.onHideQuickPresets === 'function') {
           bridge.onHideQuickPresets();
+        } else if (this.#presetDock) {
+          this.#presetDock.setQuickPresetsVisible(false);
         }
       }
       bridge.requestResetVisualizer = false;

@@ -31,7 +31,7 @@ export function initControlsUI(engine) {
     const visualizer = fields.visualizer;
     const controlSettings = fields.controlSettings;
 
-  const showUiInViewport = false; // Set to true to integrate controls into the viewport, false for separate dock
+  const showUiInViewport = true; // Set to true to integrate controls into the viewport, false for separate dock
 
   if (!engine || !engine.isRunning()) {
     console.warn('Cannot initialize UI: Engine is not running.');
@@ -668,7 +668,7 @@ export function initControlsUI(engine) {
 
     const handleViewportLayoutChange = () => {
       if (overlay.style.display !== 'none') {
-        positionDock();
+        // positionDock();
       }
     };
 
@@ -1042,21 +1042,32 @@ export function initControlsUI(engine) {
     }
   };
 
+  let open = false;
+
   // Initialize UI
   initTweakpane();
-
-  if (getOS() !== ('Windows' || 'Mac OS' || 'Linux')) {
-    switchControls();
-  }
 
   return {
     show: () => {
       switchControls();
+      open = true;
     },
     hide: () => {
       controller.abort();
       fxStudioOverlay?.close();
       sceneCameraDock?.close();
+      open = false;
     },
+    "open": open,
+    toggle: () => {
+      if (open) {
+        controller.abort();
+        fxStudioOverlay?.close();
+        sceneCameraDock?.close();
+      } else {
+        switchControls();
+      }
+      open = !open;
+    }
   };
 }

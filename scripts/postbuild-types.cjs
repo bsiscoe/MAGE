@@ -392,7 +392,24 @@ export declare function initMAGE(options?: Partial<MAGEConfig>): MAGEEngineAPI;
     allowing users to see what a preset looks like before applying it to their main scene.
 */
 export declare function previewMAGE(canvas: HTMLCanvasElement, preset: MAGEPreset, frameCount?: number): MAGEEngineAPI;
-`
+
+export type InputBridge = {
+  clientX: number;
+  clientY: number;
+  pointerOverUi: boolean;
+  currPointerDown: number;
+  requestToggleUI: boolean;
+  requestResetVisualizer: boolean;
+  requestNextShader: boolean;
+  requestPreviousShader: boolean;
+  requestWheelDirection: -1 | 0 | 1 | number;
+  onToggleUI: (() => void) | null;
+  onHideQuickPresets: (() => void) | null;
+  onUpdateTooltip: ((payload: { visible: boolean; x: number; y: number }) => void) | ((x: number, y: number) => void) | null;
+  detach: () => void;
+};
+
+export declare function createViewportInputBridge(canvas: HTMLCanvasElement): { bridge: InputBridge; inputSource: InputSource };`
 ].join('\n');
 
 fs.writeFileSync(path.join(distDir, 'mage-engine.d.ts'), contents, 'utf8');
