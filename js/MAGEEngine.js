@@ -34,7 +34,7 @@ import { MAGEEffects } from './MAGEFx.js';
 import { MAGEPresetDock } from './MAGEPresetDock.js';
 import { initControlsUI } from './MAGEFxUI.js';
 
-import { reverseAudioBuffer } from './helpers.js';
+import { normalizeAudioFeatures, reverseAudioBuffer } from './helpers.js';
 import { getEmbeddedSkyboxFaces, getRandomSkyboxId } from './skyboxes.js';
 
 import { createSculptureWithGeometry } from 'shader-park-core';
@@ -82,6 +82,7 @@ export class MAGEEngine {
   #isReversed = false;
   #visualizer = null;
   #inputs = null;
+  #lastAudioEnergy = 0;
   #state = null;
   #timeIncreasing = true;
   #screenShake = null;
@@ -162,7 +163,7 @@ export class MAGEEngine {
     this.#playbackTime = 0;
     this.#isReversed = false;
 
-    this.#visualizer = new MAGEVisualizer(this);
+    this.#visualizer = new MAGEVisualizer(this.state);
 
     this.#inputs = {
       currMouse: new Vector3(),
@@ -179,6 +180,13 @@ export class MAGEEngine {
       pointerDownMultiplier: 0.0,
       currPointerDown: 0.0,
       currAudio: 0.0,
+      currBass: 0.0,
+      currMid: 0.0,
+      currTreble: 0.0,
+      currEnergy: 0.0,
+      currCentroid: 0.0,
+      currEnergyTrend: 0.5,
+      audioMappingIntensity: 1.0,
       time: 0.0,
       volume_multiplier: 0.0,
       minimizing_factor: 0.8,
@@ -323,6 +331,58 @@ export class MAGEEngine {
 
   getActiveShader() {
     return this.#visualizer.getActiveShader();
+  }
+
+  get state() {
+    return this.#state;
+  }
+
+  get audioState() {
+    if (!this.#state) {
+      return {
+        bass: 0,
+        mid: 0,
+        treble: 0,
+        energy: 0,
+        centroid: 0,
+        energyTrend: 0.5,
+        currAudio: 0,
+      };
+    }
+
+    return {
+      bass: this.#state.currBass ?? 0,
+      mid: this.#state.currMid ?? 0,
+      treble: this.#state.currTreble ?? 0,
+      energy: this.#state.currEnergy ?? 0,
+      centroid: this.#state.currCentroid ?? 0,
+      energyTrend: this.#state.currEnergyTrend ?? 0.5,
+      audioMappingIntensity: this.#state.audioMappingIntensity ?? 1,
+      currAudio: this.#state.currAudio ?? 0,
+    };
+  }
+
+  #_updateAudioState(freqData) {
+    if (!this.#state) {
+      return;
+    }
+
+    const normalizedAudio = normalizeAudioFeatures(freqData, this.#lastAudioEnergy);
+    this.#lastAudioEnergy = normalizedAudio.energy;
+
+    const mix = 1 - this.#state.easing_speed;
+    this.#state.currBass += (normalizedAudio.bass - this.#state.currBass) * mix;
+    this.#state.currMid += (normalizedAudio.mid - this.#state.currMid) * mix;
+    this.#state.currTreble += (normalizedAudio.treble - this.#state.currTreble) * mix;
+    this.#state.currEnergy += (normalizedAudio.energy - this.#state.currEnergy) * mix;
+    this.#state.currCentroid += (normalizedAudio.centroid - this.#state.currCentroid) * mix;
+    this.#state.currEnergyTrend += (normalizedAudio.energyTrend - this.#state.currEnergyTrend) * mix;
+
+    this.#state.currAudio = this.#state.currBass;
+    this.#state.size =
+      (1 - this.#state.easing_speed) * this.#state.currAudio +
+      this.#state.easing_speed * this.#state.size +
+      this.#state.volume_multiplier * 0.01;
   }
 
   /**
@@ -2125,7 +2185,7 @@ export class MAGEEngine {
   }
 
   #_loadDefaultVisualizer() {
-    this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default'), addToHistory: true });
+    this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default', this.audioState), addToHistory: true });
     this.#_loadSkybox({ type: 'preset', presetId: 6 });
     this.#_updateVisualizer();
     this.#currentPreset = this.toPreset();
@@ -2255,36 +2315,29 @@ export class MAGEEngine {
     //   document.title = 'MAGE';
     // }
 
-    let bass_input = 0;
-    let mid_input = 0;
+    const hasLiveAudio =
+      this.#audioAnalyser &&
+      ((this.#audio && this.#audio.isPlaying) || (this.#reversedAudio && this.#reversedAudio.isPlaying));
 
     // analyze audio using FFT
-    if (
-      this.#audioAnalyser &&
-      ((this.#audio && this.#audio.isPlaying) || (this.#reversedAudio && this.#reversedAudio.isPlaying))
-    ) {
+    if (hasLiveAudio) {
       const freqData = this.#audioAnalyser.getFrequencyData();
-
-      // FFT Bucket 2
-      const bass_analysis = Math.pow((freqData[2] / 255) * this.#state.minimizing_factor, this.#state.power_factor);
-      bass_input = bass_analysis + delta * this.#state.base_speed;
-
-      // TODO: FFT MID AND HIGH - keep existing behavior
-      const mid_analysis = Math.pow((freqData[4] / 255) * this.#state.minimizing_factor, this.#state.power_factor);
-      mid_input = mid_analysis + delta * this.#state.base_speed;
+      this.#_updateAudioState(freqData);
     }
 
     // If in preview mode, simulate audio instead of reading from actual audio source
     if (this.#previewMode) {
       this.#_simulatePreviewAudio();
     } else {
-      // add audio input to states
-      const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1;
-      this.#state.currAudio = bass_input + val * this.#state.base_speed + delta * this.#state.base_speed;
-      this.#state.size =
-        (1 - this.#state.easing_speed) * this.#state.currAudio +
-        this.#state.easing_speed * this.#state.size +
-        this.#state.volume_multiplier * 0.01;
+      if (!hasLiveAudio) {
+        // add audio input to states
+        const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1;
+        this.#state.currAudio = val * this.#state.base_speed + delta * this.#state.base_speed;
+        this.#state.size =
+          (1 - this.#state.easing_speed) * this.#state.currAudio +
+          this.#state.easing_speed * this.#state.size +
+          this.#state.volume_multiplier * 0.01;
+      }
     }
 
     // Keep controls authoritative for camera motion, then apply tilt orientation once.
@@ -2553,7 +2606,7 @@ export class MAGEEngine {
 
     if (bridge.requestResetVisualizer) {
       if (canTriggerInteraction) {
-        this.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false });
+        this.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false, audioState: this.audioState });
         this.#_updateVisualizer();
         if (typeof bridge.onHideQuickPresets === 'function') {
           bridge.onHideQuickPresets();

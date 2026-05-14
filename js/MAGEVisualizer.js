@@ -3,8 +3,8 @@ import { BoxGeometry } from 'three';
 import { createSculptureWithGeometry } from "shader-park-core";
 
 export class MAGEVisualizer {
-  constructor(engine) {
-    this.engine = engine;
+  constructor(engineState) {
+    this.engineState = engineState;
     this.seed = 0;
     this.shaderIndex = -1;
     this.shaders = [];
@@ -34,8 +34,6 @@ export class MAGEVisualizer {
    */
 
   load({ shader = null, addToHistory = true, clearHistory = false } = {}) {
-    const engine = this.engine;
-    if (engine.log) console.log('Initializing MAGEVisualizer with engine instance:', engine);
 
     // If shader input is missing/invalid, generate one.
     let finalShaderCode = null;
@@ -55,7 +53,7 @@ export class MAGEVisualizer {
     ) {
       finalShaderCode = shaderCode.code;
     } else {
-      finalShaderCode = generateshaderparkcode(this, 'generator_v1.5_light');
+      finalShaderCode = generateshaderparkcode(this, 'generator_v1.5');
     }
     if (!finalShaderCode) {
       if (engine.log) console.warn('Invalid shader code input; failed to load visualizer.', { shaderCode });
@@ -80,7 +78,7 @@ export class MAGEVisualizer {
   }
 
   createMesh(shaderCode) {
-    const { state } = this.engine.getEngineFields();
+    const state = this.engineState;
     const geometry = new BoxGeometry(20000, 20000, 20000);
     this.mesh = createSculptureWithGeometry(geometry, shaderCode, () => {
           return {
@@ -89,6 +87,14 @@ export class MAGEVisualizer {
             pointerDown: state.pointerDown,
             mouse: state.mouse,
             _scale: this.scale,
+            bass: state.currBass ?? 0,
+            mid: state.currMid ?? 0,
+            treble: state.currTreble ?? 0,
+            energy: state.currEnergy ?? 0,
+            centroid: state.currCentroid ?? 0,
+            energyTrend: state.currEnergyTrend ?? 0,
+            audioMappingIntensity: state.audioMappingIntensity ?? 1,
+            amplitude: state.currAudio ?? 0,
           };
     });
   }
