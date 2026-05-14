@@ -17,8 +17,6 @@
   ],
   "scripts": {
     "test": "node scripts/test_generated_shader_parse.cjs",
-    "generate:embedded-presets": "node scripts/generate_embedded_presets.cjs",
-    "generate:embedded-skyboxes": "node scripts/generate_embedded_skyboxes.cjs",
     "build": "vite build; tsc -p tsconfig.json; node scripts/postbuild-types.cjs; node scripts/cleanup-dist.cjs"
   },
   "repository": {
@@ -34,7 +32,6 @@
   },
   "homepage": "https://github.com/bsiscoe/MAGE#readme",
   "dependencies": {
-    "@notrac/mage": "file:notrac-mage-1.0.3.tgz",
     "shader-park-core": "npm:@mage-engine/shader-park-patch@^0.2.8-patched",
     "three": "^0.183.2",
     "vite": "^8.0.0"

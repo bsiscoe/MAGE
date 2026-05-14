@@ -13,7 +13,7 @@ import {
   AgXToneMapping,
   NeutralToneMapping,
 } from 'three';
-import { EMBEDDED_SKYBOXES } from './skyboxes.js';
+import { getEmbeddedSkyboxIds } from './skyboxes.js';
 
 /**
  * Initializes the complete UI for the MAGE engine controls.
@@ -914,10 +914,7 @@ export function initControlsUI(engine) {
       sync();
     };
 
-    const embeddedSkyboxIds = Object.keys(EMBEDDED_SKYBOXES)
-      .map(value => Number.parseInt(value, 10))
-      .filter(Number.isFinite)
-      .sort((a, b) => a - b);
+    const embeddedSkyboxIds = getEmbeddedSkyboxIds();
 
     if (embeddedSkyboxIds.length > 0 && !embeddedSkyboxIds.includes(Number.parseInt(`${visualizer.skyboxPreset}`, 10))) {
       visualizer.skyboxPreset = embeddedSkyboxIds[0];

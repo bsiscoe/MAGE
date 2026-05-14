@@ -1,4 +1,4 @@
-import { getEmbeddedPresetById, getEmbeddedPresetIds } from './presets.js';
+import { getEmbeddedPresetById, getEmbeddedPresetIds } from './MAGEPreset.js';
 
 export class MAGEPresetDock {
   constructor(

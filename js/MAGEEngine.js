@@ -35,7 +35,7 @@ import { MAGEPresetDock } from './MAGEPresetDock.js';
 import { initControlsUI } from './MAGEFxUI.js';
 
 import { reverseAudioBuffer } from './helpers.js';
-import { getEmbeddedSkyboxFaces, getRandomSkyboxId, EMBEDDED_SKYBOXES } from './skyboxes.js';
+import { getEmbeddedSkyboxFaces, getRandomSkyboxId } from './skyboxes.js';
 
 import { createSculptureWithGeometry } from 'shader-park-core';
 import { generateshaderparkcode } from './generateshaderparkcode.js';
@@ -1877,12 +1877,27 @@ export class MAGEEngine {
   }
 
   #_resolveSkyboxPath({ type, presetId }) {
-    if (type !== 'preset' || typeof presetId !== 'number') {
+    if (type !== 'preset' || !Number.isInteger(presetId) || presetId < 0) {
       // TODO - support custom skybox paths in addition to preset-based ones
-      return { resolvedPath: null, skyboxId: -1 };
-    } else {
-      return { resolvedPath: `../resources/preset${presetId}/`, skyboxId: presetId };
+      return { skyboxId: -1, faceUrls: null };
     }
+
+    const embeddedFaces = getEmbeddedSkyboxFaces(presetId);
+    if (!embeddedFaces) {
+      return { skyboxId: -1, faceUrls: null };
+    }
+
+    return {
+      skyboxId: presetId,
+      faceUrls: [
+        embeddedFaces.left,
+        embeddedFaces.right,
+        embeddedFaces.up,
+        embeddedFaces.down,
+        embeddedFaces.front,
+        embeddedFaces.back,
+      ],
+    };
   }
 
   #_getViewportSize() {
@@ -2141,8 +2156,8 @@ export class MAGEEngine {
   }
 
   #_loadSkybox({ type, presetId }) {
-    const { resolvedPath, skyboxId } = this.#_resolveSkyboxPath({ type: type, presetId: presetId });
-    if (!resolvedPath) {
+    const { skyboxId, faceUrls } = this.#_resolveSkyboxPath({ type: type, presetId: presetId });
+    if (!faceUrls) {
       if (this.log) console.log('No valid skybox input provided:', presetId);
       return;
     }
@@ -2150,25 +2165,6 @@ export class MAGEEngine {
     this.#visualizer.skyboxPreset = skyboxId;
 
     const loader = new CubeTextureLoader();
-    const embeddedFaces = getEmbeddedSkyboxFaces(skyboxId);
-
-    const faceUrls = embeddedFaces
-      ? [
-        embeddedFaces.left,
-        embeddedFaces.right,
-        embeddedFaces.up,
-        embeddedFaces.down,
-        embeddedFaces.front,
-        embeddedFaces.back,
-      ]
-      : [
-        `${resolvedPath}sky_left.jpg`,
-        `${resolvedPath}sky_right.jpg`,
-        `${resolvedPath}sky_up.jpg`,
-        `${resolvedPath}sky_down.jpg`,
-        `${resolvedPath}sky_front.jpg`,
-        `${resolvedPath}sky_back.jpg`,
-      ];
 
     this.#_pendingSkyboxLoad = new Promise(resolve => {
       let settled = false;
