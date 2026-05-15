@@ -394,6 +394,7 @@ export class MAGEEngine {
   */
   randomizeVisualizer() {
       this.#visualizer.load();
+      this.#_updateVisualizer();
   }
 
   /**
