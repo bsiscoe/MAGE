@@ -290,21 +290,26 @@ Runtime loading behavior:
 ## Contributing
 Contributions are welcome! Feel free to add changes, suggest new features, or improve existing ones. MAGE is fully open-source, and your creativity is encouraged. Also if the generator spits out a really cool visualizer feel free to send it to me and I can make it a preset!
 
-## Current Bugs
-There are a few issues with MAGE: 
-- *Animations* glitch out if the page is open for too long. This is fixed with a simple refresh and I expect this to be fixed within the next update.
-- There is a problem with the *kaleidoscope shader* effect that is included with the THREE.js library. It does not have a uniform to update screen resolution and stretches if the window is not square. I do not believe this would be fixable without rewriting that effect.
-- The *Camera Orientation* setting changes the camera's up vector, which sometimes works but is incompatible with THREE.js default Orbit Controls. Future versions should implement Trackball or Arcball controls instead, and do away with the "camera orientation" setting entirely
-- Some presets must be clicked at least once to display proper animations (Mod 3 not applying properly in tweakpane)
-Please report any other issues you find as I have tried to iron out as many bugs as I could before release!
-
 ## Future Goals
-There is a suite of feautures that have yet to properly be implemented:
-- **Extended Audio Controls**: Currently you can only pause and play the audio. I would like to add toggleable mouse controls using the middle mouse so that volume and playback time can be controlled. The GUI and logic for this is mostly implemented already but needs to be finalized.
-- **Bundled Audio**: Requires the encoding of mp3 audio into a Base64 string, should be possible to implement within the current system in theory.
-- **Custom Skybox Textures**: Bundling custom skyboxes as a Base64 would allow for much more customization as well and could function well with current scene and preset implementation.
-- **Custom Icons**: At some point I want a script to create custom icons for user generated presets, which can make a gradient that somewhat resembles the look of the scene. I tried to emulate this (poorly) with the already existing presets.
-- **Web Based Presets**: Presets will eventually be stored in a web database so they can be used by anyone (similar to FUZZYW's [dddance.party](https://dddance.party/).
+Future Work 
+
+Several areas remain open for continued development and experimentation. 
+
+Potential future directions include: 
+
+More advanced beat and structure detection  
+
+Learned audio-to-visual mappings  
+
+Scene persistence systems  
+
+Expanded procedural grammar complexity  
+
+GPU optimization and scalability improvements  
+
+The system is intentionally designed as a modular research platform capable of continued iteration and experimentation. 
+
+I plan to fully integrate the ideas of both website designs from my teams with one another and, fix the last few bugs that have to do with my implementation or original vision not being entirely clear. 
 
 ## Acknowledgments
 Special thanks to:
