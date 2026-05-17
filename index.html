@@ -422,7 +422,7 @@ textarea {
 
         document.getElementById('presetToThumbnail').addEventListener('click', () => {
             if (typeof engine.captureThumbnail === 'function') {
-            const presetForThumbnail = engine.toPreset({ includeState: true, includeThumbnail: false });
+            const presetForThumbnail = engine.toPreset();
             engine.captureThumbnail(presetForThumbnail, { quality: 0.9, settleFrames: 5 }).then(dataUrl => {
                     if (dataUrl) {
                         const img = new Image();
@@ -509,11 +509,11 @@ textarea {
         });
 
         document.getElementById('btnExportPreset').addEventListener('click', () => {
-        const preset = engine.toPreset({ includeState: true, includeThumbnail: true });
+        const preset = engine.toPreset();
         const json = JSON.stringify(preset, null, 2);
         document.getElementById('presetInput').value = json;
         renderSavedPresetGallery();
-        log('toPreset({ includeState: true, includeThumbnail: true }) called');
+        log('toPreset() called');
         });
 
         document.getElementById('btnApplyQuickPreset').addEventListener('click', () => {

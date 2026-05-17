@@ -33,7 +33,7 @@ import { MAGEPreset } from './MAGEPreset.js';
 import { MAGEEffects } from './MAGEFx.js';
 import { MAGEPresetDock } from './MAGEPresetDock.js';
 import { initControlsUI } from './MAGEFxUI.js';
-
+import { hashSeedString } from './helpers.js';
 import { normalizeAudioFeatures, reverseAudioBuffer } from './helpers.js';
 import { getEmbeddedSkyboxFaces, getRandomSkyboxId } from './skyboxes.js';
 
@@ -43,7 +43,7 @@ import { generateshaderparkcode } from './generateshaderparkcode.js';
 const controlTipsImageDataUrl = new URL('../resources/controltips.png', import.meta.url).href;
 
 
-const MAGE_VERSION = '1.0.3';
+const MAGE_VERSION = '1.1';
 
 /**
  * @typedef {Object} EngineControlSettings
@@ -60,8 +60,9 @@ const MAGE_VERSION = '1.0.3';
  */
 
 export class MAGEEngine {
-  #uiController = null;
   #engineVersion = MAGE_VERSION;
+  #generatorType = 'generator_v' + MAGE_VERSION;
+  #uiController = null;
   #canvas = null;
   #scene = null;
   #renderer = null;
@@ -121,14 +122,13 @@ export class MAGEEngine {
   #previewFrameCount = 0;
   #previewFramesTarget = 0;
   #isLowQualityMode = false;
-  #fftSize = null;
+  #fftSize = 2048;
+  log = false;
   constructor({ canvas, log = false, autoStart = false, withControls: { active = false, integrated = false } = {}, lowQualityMode = false } = {}) {
     // console log version
     if (log) {
       console.log(`Initializing MAGE Engine v${this.#engineVersion}...`);
       this.log = true;
-    } else {
-      this.log = false;
     }
 
     this.fx = new MAGEEffects(this);
@@ -240,6 +240,76 @@ export class MAGEEngine {
     // this._previewCaptureQueue = Promise.resolve();
     // this.savedPresets = [];
     // this._presetGalleryWindow = null;
+  }
+
+  // Getters and Setters
+  get activeShader() {
+    return this.#visualizer.getActiveShader();
+  }
+
+  set activeShader(shader) {
+    try {
+      createSculptureWithGeometry(new BoxGeometry(1, 1, 1), shader);
+    } catch (error) {
+      console.error('Failed to set active shader: shader code is invalid and failed to compile.', error);
+      throw new Error(`Failed to set active shader: shader code is invalid and failed to compile. Error: ${error.message}`);
+      return;
+    }
+    this.#visualizer.load({ shader: shader, addToHistory: true, clearHistory: false });
+    this.#_updateVisualizer();
+  }
+
+  set fftSize(size) {
+    this.#fftSize = Number.parseInt(`${size}`, 2048) || 2048;
+  }
+
+  get fftSize() {
+    return this.#fftSize;
+  }
+
+  get state() {
+    return this.#state;
+  }
+
+  get audioState() {
+    if (!this.#state) {
+      return {
+        bass: 0,
+        mid: 0,
+        treble: 0,
+        energy: 0,
+        centroid: 0,
+        energyTrend: 0.5,
+        currAudio: 0,
+      };
+    }
+
+    return {
+      bass: this.#state.currBass ?? 0,
+      mid: this.#state.currMid ?? 0,
+      treble: this.#state.currTreble ?? 0,
+      energy: this.#state.currEnergy ?? 0,
+      centroid: this.#state.currCentroid ?? 0,
+      energyTrend: this.#state.currEnergyTrend ?? 0.5,
+      audioMappingIntensity: this.#state.audioMappingIntensity ?? 1,
+      currAudio: this.#state.currAudio ?? 0,
+    };
+  }
+
+  set generatorType(type) {
+    if (typeof type !== 'string' || !type.startsWith('generator_')) {
+      console.warn(`Invalid generator type: ${type}. Must be a string starting with 'generator_'.`);
+      return;
+    }
+    this.#generatorType = type;
+  }
+
+  get generatorType() {
+    return this.#generatorType;
+  }
+  
+  set state(state) {
+    this.#state = state;
   }
 
   /**
