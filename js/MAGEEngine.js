@@ -351,6 +351,8 @@ export class MAGEEngine {
    * @private
    */
   #_simulatePreviewAudio() {
+    const shaderCode = this.activeShader;
+
     if (!this.#state) {
       console.warn('Cannot simulate preview audio: engine state not initialized.');
       return;
@@ -362,12 +364,36 @@ export class MAGEEngine {
     const mid = Math.sin(t * Math.PI * 2.2) * 0.45 + 0.25;
     const treble = Math.sin(t * Math.PI * 1.8) * 0.4 + 0.35;
 
+    const bass_analysis = Math.pow(bass * this.#state.minimizing_factor, this.#state.power_factor);
+
+    const hasAudioInputs = shaderCode &&
+      shaderCode.includes('let bass = input()') &&
+      shaderCode.includes('let mid = input()') &&
+      shaderCode.includes('let treble = input()') &&
+      shaderCode.includes('let energy = input()') &&
+      shaderCode.includes('let spectralCentroid = input()') &&
+      shaderCode.includes('let energyTrend = input()');
+
+    const hasLegacyAudioInputs = shaderCode &&
+      shaderCode.includes('let size = input()')
+
     // Apply audio parameters with easing; size stays independent.
     const mix = 1 - this.#state.easing_speed;
-    this.#state.currBass += (bass - this.#state.currBass) * mix;
-    this.#state.currMid += (mid - this.#state.currMid) * mix;
-    this.#state.currTreble += (treble - this.#state.currTreble) * mix;
-    this.#state.currAudio = this.#state.currBass;
+    if (hasAudioInputs) {
+      this.#state.currBass += (bass - this.#state.currBass) * mix;
+      this.#state.currMid += (mid - this.#state.currMid) * mix;
+      this.#state.currTreble += (treble - this.#state.currTreble) * mix;
+      this.#state.currAudio = this.#state.currBass;
+    } else if (hasLegacyAudioInputs) {
+      // modulate size only for preview audio to demonstrate audio reactivity without affecting visualizer parameters that may be mapped to size
+      this.#state.currAudio = bass_analysis + Math.sin(t) * this.#state.size * 0.1 + 0.05
+      this.#state.size =
+      (1 - this.#state.easing_speed) * this.#state.currAudio +
+      this.#state.easing_speed * this.#state.size +
+      this.#state.volume_multiplier * 0.01;
+    } else {
+      console.warn('Preview mode active but shader does not declare audio inputs. Simulated audio will not affect visualizer.');
+    }
   }
 
   /**
