@@ -427,17 +427,36 @@ export class MAGEEngine {
     if (!this.#state) {
       return;
     }
+    const shaderCode = this.activeShader;
+    const hasLegacyInputs = shaderCode && shaderCode.includes('let size = input()');
 
     const normalizedAudio = normalizeAudioFeatures(freqData, this.#lastAudioEnergy);
+
+    const bass_analysis = Math.pow(normalizedAudio.bass * this.#state.minimizing_factor, this.#state.power_factor);
+    const mid_analysis = Math.pow(normalizedAudio.mid * this.#state.minimizing_factor, this.#state.power_factor);
+    const treble_analysis = Math.pow(normalizedAudio.treble * this.#state.minimizing_factor, this.#state.power_factor);
+
     this.#lastAudioEnergy = normalizedAudio.energy;
 
     const mix = 1 - this.#state.easing_speed;
-    this.#state.currBass += (normalizedAudio.bass - this.#state.currBass) * mix;
-    this.#state.currMid += (normalizedAudio.mid - this.#state.currMid) * mix;
-    this.#state.currTreble += (normalizedAudio.treble - this.#state.currTreble) * mix;
-    this.#state.currEnergy += (normalizedAudio.energy - this.#state.currEnergy) * mix;
-    this.#state.currCentroid += (normalizedAudio.centroid - this.#state.currCentroid) * mix;
-    this.#state.currEnergyTrend += (normalizedAudio.energyTrend - this.#state.currEnergyTrend) * mix;
+
+    if (hasLegacyInputs) {
+      // modulate size only for legacy shaders to allow newer shaders to take full advantage 
+      // of audio features without being limited by size mappings, while still providing 
+      // audio reactivity for older shaders that may rely on size input
+      this.#state.currAudio = bass_analysis + Math.sin(this.#state.time) * this.#state.size * 0.1 + 0.05
+      this.#state.size =
+      (1 - this.#state.easing_speed) * this.#state.currAudio +
+      this.#state.easing_speed * this.#state.size +
+      this.#state.volume_multiplier * 0.01;
+    } else {
+      this.#state.currBass += (bass_analysis - this.#state.currBass) * mix;
+      this.#state.currMid += (mid_analysis - this.#state.currMid) * mix;
+      this.#state.currTreble += (treble_analysis - this.#state.currTreble) * mix;
+      this.#state.currEnergy += (normalizedAudio.energy - this.#state.currEnergy) * mix;
+      this.#state.currCentroid += (normalizedAudio.centroid - this.#state.currCentroid) * mix;
+      this.#state.currEnergyTrend += (normalizedAudio.energyTrend - this.#state.currEnergyTrend) * mix;
+    }
 
     this.#state.currAudio = this.#state.currBass;
   }
