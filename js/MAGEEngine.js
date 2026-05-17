@@ -654,11 +654,6 @@ export class MAGEEngine {
     );
   }
 
-  swapShader(newShader) {
-    this.#visualizer.load({ shader: newShader, addToHistory: true });
-    this.#_updateVisualizer();
-  }
-
   /**
    * Loads a preset into the engine.
    * @param {MAGEPreset} presetInput - The preset input to load.
@@ -1481,10 +1476,6 @@ export class MAGEEngine {
       visualizer: this.#visualizer,
       controlSettings: this.#controlSettings,
     }
-  }
-
-  get state() {
-    return this.#state;
   }
 
   openPresetDock() {
