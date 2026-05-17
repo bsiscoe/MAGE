@@ -423,47 +423,6 @@ export class MAGEEngine {
     }
   }
 
-  get activeShader() {
-    return this.#visualizer.getActiveShader();
-  }
-
-  set fftSize(size) {
-    this.#fftSize = Number.parseInt(`${size}`, 2048) || 2048;
-  }
-
-  get fftSize() {
-    return this.#fftSize;
-  }
-
-  get state() {
-    return this.#state;
-  }
-
-  get audioState() {
-    if (!this.#state) {
-      return {
-        bass: 0,
-        mid: 0,
-        treble: 0,
-        energy: 0,
-        centroid: 0,
-        energyTrend: 0.5,
-        currAudio: 0,
-      };
-    }
-
-    return {
-      bass: this.#state.currBass ?? 0,
-      mid: this.#state.currMid ?? 0,
-      treble: this.#state.currTreble ?? 0,
-      energy: this.#state.currEnergy ?? 0,
-      centroid: this.#state.currCentroid ?? 0,
-      energyTrend: this.#state.currEnergyTrend ?? 0.5,
-      audioMappingIntensity: this.#state.audioMappingIntensity ?? 1,
-      currAudio: this.#state.currAudio ?? 0,
-    };
-  }
-
   #_updateAudioState(freqData) {
     if (!this.#state) {
       return;
