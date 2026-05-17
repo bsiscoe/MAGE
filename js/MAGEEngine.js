@@ -467,8 +467,12 @@ export class MAGEEngine {
    *  
   */
   randomizeVisualizer() {
-      this.#visualizer.load();
+      this.#visualizer.load({ addToHistory: true, clearHistory: false, generator: 'generator_v1.1' });
       this.#_updateVisualizer();
+  }
+
+  randomizeEffects() {
+    this.fx.randomizeSettings();
   }
 
   /**
