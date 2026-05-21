@@ -21,6 +21,12 @@ const contents = [
  */
 export interface MAGEPreset {
   // The structure of the preset is not defined here, as it is considered an opaque type.
+  // It can be any serializable object that represents the MAGE engine.
+  [key: string]: any;
+}
+
+export interface MAGEState {
+  // The structure of the state is not defined here, as it is considered an opaque type.
   // It can be any serializable object that represents the state of the MAGE engine.
   [key: string]: any;
 }
@@ -122,6 +128,10 @@ export type MAGEFxPassOrder = [...MAGEFxPass[], 'outputPass'];
  * const isBloomEnabled = engine.fx.getBloomEnabled();
  */
 export interface MAGEFxAPI {
+  // Glitch Pass controls
+  setGlitchThreshold(value: number): void;
+  getGlitchThreshold(): number;
+
   // Bloom Controls
   getBloomEnabled(): boolean;
   setBloomEnabled(value: boolean): void;
@@ -224,6 +234,71 @@ export interface MAGEFxAPI {
  * engine.dispose();
  */
 export interface MAGEEngineAPI {
+  // Setters and Getters for engine control methods are defined here, including:
+  /**
+   * Sets the active shader for the visualizer. The shader code is validated for compilation before being applied. 
+   * If the shader code is invalid and fails to compile, an error is thrown and the active shader remains unchanged. 
+   * @param shader The shader code to set as the active shader for the visualizer. This should be a string containing 
+     valid shader code that can be compiled by the engine.
+   * @throws Will throw an error if the provided shader code is invalid and fails to compile.
+   * @returns {void}
+   * @description This method allows users to change the visual appearance of the MAGE engine by applying new shader code.
+     By validating the shader code before applying it, we can ensure that only valid shaders are used, preventing potential 
+     issues or crashes caused by invalid shader code. If the shader code is valid, it will be loaded into the visualizer 
+     and become the new active shader, allowing users to see the changes in real-time.
+   */
+  set activeShader(shader: string);
+
+  /**
+   * Gets the active shader code currently being used by the visualizer.
+   * @return {string} The shader code of the currently active shader in the visualizer. 
+   * @description This method returns the shader code as a string,
+     which represents the current visual configuration of the MAGE engine. 
+     If no shader is currently active, it will return the string 'default'. 
+     The returned shader code can be used for reference, debugging, or for 
+     creating new shaders based on the current one.
+   */
+  get activeShader(): string;
+
+  /**
+    * Sets the engine state.
+    * @param {MAGEState} state - The state to set.
+    * @returns {void}
+    * @description This method allows users to set the internal state of the MAGE engine. 
+      The state is represented as a MAGEState object, which is an opaque type produced by the engine. 
+      By setting the engine state, users can set the following parameters to sync two engine states:
+            mouse position,
+            visualizer size,
+            pointerDown state,
+            audio input states,
+            time,
+            camTilt,
+            camOrientationMode,
+            camOrientationSpeed,
+            camPosition,
+            etc.
+  */
+  set state(state: MAGEState);
+
+  /**
+   * Gets the current engine state.
+   * @return {MAGEState} The current state of the MAGE engine. 
+   * @description This method allows users to get the internal state of the MAGE engine. 
+    The state is represented as a MAGEState object, which is an opaque type produced by the engine. 
+    By getting the engine state, users can access the following parameters to sync two engine states:
+            mouse position,
+            visualizer size,
+            pointerDown state,
+            audio input states,
+            time,
+            camTilt,
+            camOrientationMode,
+            camOrientationSpeed,
+            camPosition,
+            etc.
+   */
+  get state(): MAGEState;
+
   /**
    * Starts the MAGE engine, initiating the rendering loop and enabling audio playback.
    */
@@ -361,6 +436,17 @@ export interface MAGEEngineAPI {
    * @returns {void}
    */
   randomizeVisualizer(): void;
+  /**
+   * Randomizes the settings of the post-processing effects in the MAGE engine. 
+   * This method can be used to quickly explore different combinations of effect 
+   * settings and discover new visual styles without needing to manually adjust each setting. 
+   * When called, it will apply random values to the various effect settings available in 
+   * the MAGEFxAPI, allowing users to see how different configurations affect the visual output 
+   * of the engine. This can be a fun and efficient way to experiment with the effects and find 
+   * interesting combinations that may not have been considered otherwise.
+   * @returns {void}
+   */
+  randomizeEffects(): void;
 }
 
 /**
