@@ -6,7 +6,7 @@ import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
 import { DotScreenShader } from 'three/addons/shaders/DotScreenShader.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { GlitchPass } from 'three/addons/postprocessing/GlitchPass.js'
+import { GlitchPass } from './GlitchPass.js';
 import { LuminosityShader } from 'three/addons/shaders/LuminosityShader.js';
 import { SobelOperatorShader } from 'three/addons/shaders/SobelOperatorShader.js';
 import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShader.js';
@@ -250,7 +250,12 @@ export class MAGEEffects {
       enabled: false,
     };
     this.glitchPass = {
-      shader: new GlitchPass(64),
+      threshold: 0.025,
+      shader: new GlitchPass(() => {
+        const trigger = engine.glitchPassTrigger;
+        const thresh = this.glitchPass.threshold;
+        return trigger > thresh;
+      }, 64),
       enabled: false,
     };
     this.outputPass = {
@@ -341,12 +346,27 @@ export class MAGEEffects {
     this.engine.setToneMappingExposure(Number(value));
   }
 
-  // Individual Pass Toggles
-  getGlitchEnabled = () => this.glitchPass.enabled
+  // custom glitch pass trigger based on audio input function
+  getGlitchEnabled = () => this.glitchPass?.enabled || false
   setGlitchEnabled = (value) => {
-    this.glitchPass.enabled = Boolean(value);
-    this.engine.refreshFx();
+    if (this.glitchPass) {
+      this.glitchPass.enabled = Boolean(value);
+      this.engine.refreshFx();
+    }
   }
+  setGlitchThreshold = (percentage) => {
+    this.glitchPass.threshold = Number(percentage);
+  }
+  getGlitchThreshold = () => { return this.glitchPass.threshold; };
+  normalizeGlitchThreshold = async () => {
+    const threshold = await this._normalizeThresholdWithBuffer(() => this.engine.glitchPassTrigger);
+    if (Number.isFinite(threshold)) {
+      this.setGlitchThreshold(threshold);
+    }
+    return threshold;
+  };
+
+  // Individual Pass Toggles
   getDotEnabled = () => this.dotShader.enabled
   setDotEnabled = (value) => {
     this.dotShader.enabled = Boolean(value);
@@ -582,6 +602,62 @@ export class MAGEEffects {
     sceneCameraDock?.refresh();
     engine.refreshFx();
   };
+
+  async _normalizeThresholdWithBuffer(getTriggerValueFn) {
+    const sampleDurationMs = 3000;
+    const samples = [];
+    const startTime = performance.now();
+
+    return await new Promise(resolve => {
+      let resolved = false;
+
+      const finish = () => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+
+        if (samples.length === 0) {
+          resolve(this.glitchPass.threshold);
+          return;
+        }
+
+        samples.sort((a, b) => a - b);
+        const lastIndex = samples.length - 1;
+        const percentileIndex = Math.min(lastIndex, Math.max(0, Math.floor(lastIndex * 0.9)));
+        const upperQuartileIndex = Math.min(lastIndex, Math.max(0, Math.floor(lastIndex * 0.75)));
+        const highSample = samples[percentileIndex];
+        const upperQuartile = samples[upperQuartileIndex];
+
+        const blendedThreshold = Number.isFinite(highSample) && Number.isFinite(upperQuartile)
+          ? (highSample * 0.7) + (upperQuartile * 0.3)
+          : highSample;
+
+        resolve(Number.isFinite(blendedThreshold) ? Math.max(0, blendedThreshold) : this.glitchPass.threshold);
+      };
+
+      const sampleFrame = () => {
+        if (resolved) {
+          return;
+        }
+
+        const value = Number(getTriggerValueFn?.());
+        if (Number.isFinite(value)) {
+          samples.push(value);
+        }
+
+        if (performance.now() - startTime >= sampleDurationMs) {
+          finish();
+          return;
+        }
+
+        requestAnimationFrame(sampleFrame);
+      };
+
+      requestAnimationFrame(sampleFrame);
+      setTimeout(finish, sampleDurationMs);
+    });
+  }
 }
 
 export default MAGEEffects;

@@ -1,11 +1,13 @@
-import { generateshaderparkcode } from "./generateshaderparkcode";
+import { shaderParkGenerator } from "./generateshaderparkcode";
+import { hashSeedString } from "./helpers.js";
 import { BoxGeometry } from 'three';
 import { createSculptureWithGeometry } from "shader-park-core";
 
 export class MAGEVisualizer {
   constructor(engine) {
     this.engine = engine;
-    this.seed = 0;
+    this.shader = null;
+    this.seed = null;
     this.shaderIndex = -1;
     this.shaders = [];
     this.skyboxPreset = null;
@@ -33,46 +35,56 @@ export class MAGEVisualizer {
    * if loading failed due to invalid input.
    */
 
-  load({ shader = null, addToHistory = true, clearHistory = false } = {}){
+  load({ seed = null, shader = null, addToHistory = true, clearHistory = false, generator = null } = {}){
 
-    // If shader input is missing/invalid, generate one.
     let finalShaderCode = null;
-    let shaderCode = shader;
-    if (typeof shaderCode === 'string') {
-      finalShaderCode = shaderCode;
-    } else if (
-      shaderCode &&
-      typeof shaderCode === 'object' &&
-      typeof shaderCode.shader === 'string'
-    ) {
-      finalShaderCode = shaderCode.shader;
-    } else if (
-      shaderCode &&
-      typeof shaderCode === 'object' &&
-      typeof shaderCode.code === 'string'
-    ) {
-      finalShaderCode = shaderCode.code;
+    let generatedSeed = null;
+
+    // Prefer an explicit shader if provided (string or { shader, seed })
+    if (shader) {
+      if (this.engine.log) {
+        console.log('MAGEVisualizer.load: Loading shader from input:', shader);
+      }
+
+      // use shader directly if it's a string, otherwise try to extract shader code from object 
+      if (typeof shader === 'string') {
+        finalShaderCode = shader;
+      }
+
+      // If a seed param is explicitly provided, prefer it for tracking/regeneration
+      if (seed !== null) {
+        generatedSeed = seed;
+      }
+    // If no shader provided but seed is provided, we can still generate a shader
     } else {
-      finalShaderCode = generateshaderparkcode(this, 'generator_v1.5');
+      const result = shaderParkGenerator(this, seed, generator);
+      finalShaderCode = result.shader;
+      generatedSeed = result.seed;
     }
+
+    this.shader = finalShaderCode;
+    this.seed = generatedSeed;
+
     if (!finalShaderCode) {
       throw new Error('Failed to load shader: No valid shader code provided and generation failed.');
-      return null;
     }
+
     if (clearHistory) {
       this.shaders = [];
       this.shaderIndex = -1;
     }
+
     if (addToHistory) {
       this.shaders.push({
         //id: MAGEEngine.#_idFromShaderCode(finalShaderCode),
-        shader: finalShaderCode,
+        shader: this.shader,
+        seed: this.seed,
         timestamp: Date.now(),
       });
       this.shaderIndex = this.shaders.length - 1;
     }
 
-    this.createMesh(finalShaderCode);
+    this.createMesh(this.shader);
   }
 
   createMesh(shaderCode) {
@@ -87,11 +99,13 @@ export class MAGEVisualizer {
       shaderCode.includes('let energy = input()') &&
       shaderCode.includes('let spectralCentroid = input()') &&
       shaderCode.includes('let energyTrend = input()');
+
+    const hasLegacyAudioInputs = shaderCode &&
+      shaderCode.includes('let size = input()')
     
     this.mesh = createSculptureWithGeometry(geometry, shaderCode, () => {
           const callback = {
             time: state.time ?? 0,
-            size: state.size ?? 0,
             pointerDown: state.pointerDown ?? 0,
             mouse: state.mouse ?? { x: 0, y: 0 },
             _scale: this.scale ?? 1,
@@ -106,6 +120,11 @@ export class MAGEVisualizer {
             callback.spectralCentroid = state.currCentroid ?? 0;
             callback.energyTrend = state.currEnergyTrend ?? 0;
           }
+
+          if (hasLegacyAudioInputs) {
+            // scale curr energy to a 0-1 range and add to existing size input for legacy shader support, allowing older shaders to be influenced by audio without breaking their existing size mappings
+            callback.size = state.currEnergy * 0.23 + state.size ?? 0;
+          }
           
           return callback;
     });
@@ -115,7 +134,7 @@ export class MAGEVisualizer {
     if (this.shaderIndex >= 0 && this.shaderIndex < this.shaders.length) {
       return this.shaders[this.shaderIndex].shader;
     }
-    return null;
+    return 'default';
   }
 
   previousShader() {
@@ -130,7 +149,7 @@ export class MAGEVisualizer {
       nextShader = this.shaders[this.shaderIndex - 1];
       this.shaderIndex--;
     }
-    this.load({ shader: nextShader.shader, addToHistory: false });
+    this.load({ shader: nextShader.shader, seed: nextShader.seed, addToHistory: false });
     this.engine.showViewportMessage(`Loading previous visualizer...`, 25);
     return;
   }
@@ -147,8 +166,26 @@ export class MAGEVisualizer {
       nextShader = this.shaders[this.shaderIndex + 1];
       this.shaderIndex++;
     }
-    this.load({ shader: nextShader.shader, addToHistory: false });
+    this.load({ shader: nextShader.shader, seed: nextShader.seed, addToHistory: false });
     this.engine.showViewportMessage(`Loading next visualizer...`, 25);
     return;
+  }
+
+  isLegacyShader() {
+     const shaderCode = this.getActiveShader();
+     const isLegacy = shaderCode && shaderCode.includes('let size = input()') && !shaderCode.includes('let bass = input()');
+     return isLegacy;
+  }
+
+  hasAudioInputs() {
+    const shaderCode = this.getActiveShader();
+    const hasAudio = shaderCode &&
+      shaderCode.includes('let bass = input()') &&
+      shaderCode.includes('let mid = input()') &&
+      shaderCode.includes('let treble = input()') &&
+      shaderCode.includes('let energy = input()') &&
+      shaderCode.includes('let spectralCentroid = input()') &&
+      shaderCode.includes('let energyTrend = input()');
+    return hasAudio;
   }
 }

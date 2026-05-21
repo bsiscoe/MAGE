@@ -118,6 +118,7 @@ export class MAGEEngine {
     y: 0,
   };
   #_pendingSkyboxLoad = null;
+  #_pendingControls = null;
   #previewMode = false;
   #previewFrameCount = 0;
   #previewFramesTarget = 0;
@@ -271,6 +272,7 @@ export class MAGEEngine {
     return this.#state;
   }
 
+  // return normalized audio data with easing applied, suitable for passing to shaders; if audio is not loaded, returns default values
   get audioState() {
     if (!this.#state) {
       return {
@@ -310,6 +312,14 @@ export class MAGEEngine {
   
   set state(state) {
     this.#state = state;
+  }
+
+  get glitchPassTrigger() {
+    if (this.#visualizer.isLegacyShader()) {
+      return this.#state.size;
+    } else {
+      return this.#state.bass;
+    }
   }
 
   /**
@@ -366,25 +376,17 @@ export class MAGEEngine {
 
     const bass_analysis = Math.pow(bass * this.#state.minimizing_factor, this.#state.power_factor);
 
-    const hasAudioInputs = shaderCode &&
-      shaderCode.includes('let bass = input()') &&
-      shaderCode.includes('let mid = input()') &&
-      shaderCode.includes('let treble = input()') &&
-      shaderCode.includes('let energy = input()') &&
-      shaderCode.includes('let spectralCentroid = input()') &&
-      shaderCode.includes('let energyTrend = input()');
-
-    const hasLegacyAudioInputs = shaderCode &&
-      shaderCode.includes('let size = input()')
+    const isLegacyShader = this.#visualizer.isLegacyShader();
+    const isAudioReactive = this.#visualizer.hasAudioInputs();
 
     // Apply audio parameters with easing; size stays independent.
     const mix = 1 - this.#state.easing_speed;
-    if (hasAudioInputs) {
+    if (isAudioReactive && !isLegacyShader) {
       this.#state.currBass += (bass - this.#state.currBass) * mix;
       this.#state.currMid += (mid - this.#state.currMid) * mix;
       this.#state.currTreble += (treble - this.#state.currTreble) * mix;
       this.#state.currAudio = this.#state.currBass;
-    } else if (hasLegacyAudioInputs) {
+    } else if (isLegacyShader) {
       // modulate size only for preview audio to demonstrate audio reactivity without affecting visualizer parameters that may be mapped to size
       this.#state.currAudio = bass_analysis + Math.sin(t) * this.#state.size * 0.1 + 0.05
       this.#state.size =
@@ -675,19 +677,30 @@ export class MAGEEngine {
     this.#currentPreset = preset;
 
     if (preset.controls) {
-      this.#_loadControls(preset.controls);
+      if (this.#controls) {
+        this.#_loadControls(preset.controls);
+      } else {
+        // controls not created yet (preset loaded before start()); apply later in _createScene
+        this.#_pendingControls = preset.controls;
+      }
     }
 
     if (preset.visualizer) {
       if (preset.visualizer.skyboxPreset !== undefined && preset.visualizer.skyboxPreset !== null) {
         const normalizedSkybox = this.#_normalizeSkyboxInput(preset.visualizer.skyboxPreset);
         if (normalizedSkybox) {
-          this.#_loadSkybox(normalizedSkybox);
+          this.loadSkybox(normalizedSkybox);
         } else if (this.log)
           console.warn('[MAGEEngine.loadPreset] Invalid skyboxPreset input; expected preset id, preset path, or { type, presetId }', { input: preset.visualizer.skyboxPreset });
       }
+      if (preset.visualizer.seed) {
+        this.#visualizer.load({ seed: preset.visualizer.seed, addToHistory: true, clearHistory: true });
+        this.#_updateVisualizer();
+      }
+      // support legacy presets with shader field instead of seed
       if (preset.visualizer.shader) {
         this.#visualizer.load({ shader: preset.visualizer.shader, addToHistory: true, clearHistory: true });
+        this.#_updateVisualizer();
       }
       if (typeof preset.visualizer.scale === 'number') {
         this.#visualizer.scale = preset.visualizer.scale;
@@ -788,10 +801,14 @@ export class MAGEEngine {
    * @returns {MAGEPreset} The exported preset as a MAGEPreset instance or a compact object depending on the specified schema.
    */
   toPreset() {
+    // map current controls to internal THREE.js field
+    this.#controls.saveState();
+
     const preset = {
       version: MAGE_VERSION,
       visualizer: {
-        shader: this.activeShader,
+        seed : this.#visualizer.seed,
+        shader : this.activeShader,
         skyboxPreset: this.#visualizer.skyboxPreset,
         scale: this.#visualizer.scale,
       },
@@ -1378,6 +1395,9 @@ export class MAGEEngine {
       }
       const uiController = initControlsUI(engine);
       engine.#uiController = uiController;
+      // Wire engine hooks so loadPreset can ask the UI to refresh when presets are applied.
+      this.#refreshSettingsUI = uiController.refresh;
+      this.#onPresetLoaded = uiController.onPresetLoaded;
       uiController.toggle();
     }
 
@@ -1431,7 +1451,7 @@ export class MAGEEngine {
     if (randomSkybox) {
       this.#visualizer.skyboxPreset = randomSkybox;
     }
-    this.#_loadSkybox({ type: 'preset', presetId: randomSkybox });
+    this.loadSkybox({ type: 'preset', presetId: randomSkybox });
   }
 
   showIntegratedControls() {
@@ -1529,7 +1549,7 @@ export class MAGEEngine {
       return;
     }
     this.#state.time = 0.0;
-    //this.loadPreset(this.#currentPreset);
+    this.loadPreset(this.#currentPreset);
     this.start();
   }
 
@@ -2287,19 +2307,26 @@ export class MAGEEngine {
     this.#clock = new Timer();
 
     // Add mouse controls
-    this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement, {
-      enabledamping: true,
-      dampingFactor: 0.25,
-      zoomSpeed: 0.5,
-      rotateSpeed: 0.5,
-    });
-    this.#controls.enabledamping = true;
+    this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
+    this.#controls.enableDamping = true;
+    this.#controls.dampingFactor = 0.25;
+    this.#controls.zoomSpeed = 0.5;
+    this.#controls.rotateSpeed = 0.5;
     this.#controls.autoRotate = true;
     this.#controls.autoRotateSpeed = 0.2;
-    this.#controls.saveState();
     this.#controls.enabled = false; // Start disabled until controls loaded
 
+    // save initial state for reset
+    this.#controls.saveState();
+
     this.#_ensureViewportToast();
+
+    // If a preset with controls was loaded before the scene/controls existed,
+    // apply those queued controls now so camera orientation is restored.
+    if (this.#_pendingControls) {
+      this.#_loadControls(this.#_pendingControls);
+      this.#_pendingControls = null;
+    }
 
     this.#_syncViewport(true);
   }
@@ -2315,8 +2342,8 @@ export class MAGEEngine {
   }
 
   #_loadDefaultVisualizer() {
-    this.#visualizer.load({ shader: generateshaderparkcode(this.visualizer, 'default'), addToHistory: true });
-    this.#_loadSkybox({ type: 'preset', presetId: 6 });
+    this.#visualizer.load({ seed: 'default', addToHistory: true });
+    this.loadSkybox({ type: 'preset', presetId: 6 });
     this.#_updateVisualizer();
     this.#currentPreset = this.toPreset();
   }
@@ -2345,7 +2372,7 @@ export class MAGEEngine {
     return `shader_${Math.abs(hash)}`;
   }
 
-  #_loadSkybox({ type, presetId }) {
+  loadSkybox({ type, presetId }) {
     const { skyboxId, faceUrls } = this.#_resolveSkyboxPath({ type: type, presetId: presetId });
     if (!faceUrls) {
       if (this.log) console.log('No valid skybox input provided:', presetId);
@@ -2412,7 +2439,7 @@ export class MAGEEngine {
   #_staticAudioUpdate(delta) {
     const val = Math.sin(this.#state.time) * this.#state.size * 0.02 + 0.1; 
     const update = val * this.#state.base_speed + delta * this.#state.base_speed; 
-    this.#state.size = 
+    this.#state.size =
     (1 - this.#state.easing_speed) * update + 
     this.#state.easing_speed * this.#state.size + 
     this.#state.volume_multiplier * 0.01;
@@ -2726,8 +2753,7 @@ export class MAGEEngine {
 
     if (bridge.requestResetVisualizer) {
       if (canTriggerInteraction) {
-        this.#visualizer.load({ shader: null, addToHistory: true, clearHistory: false });
-        this.#_updateVisualizer();
+        this.randomizeVisualizer()
         if (typeof bridge.onHideQuickPresets === 'function') {
           bridge.onHideQuickPresets();
         } else if (this.#presetDock) {
