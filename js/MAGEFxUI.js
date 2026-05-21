@@ -52,6 +52,27 @@ export function initControlsUI(engine) {
     engine.refreshFx();
   };
 
+  // Safe getBoundingClientRect wrapper to avoid errors in environments
+  // where renderer.domElement may be missing (e.g. React SSR or detached canvases).
+  const safeGetRendererRect = () => {
+    try {
+      const el = renderer && renderer.domElement;
+      if (el && typeof el.getBoundingClientRect === 'function') {
+        return el.getBoundingClientRect();
+      }
+    } catch (e) {
+      // fall through to fallback
+    }
+    return {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+  };
+
   const getOS = () => {
     const userAgent = window.navigator.userAgent;
     const platform = window.navigator?.userAgentData?.platform || window.navigator.platform;
@@ -177,6 +198,7 @@ export function initControlsUI(engine) {
     });
 
     let draggedLayerId = null;
+    const syncers = [];
 
     const clearDropIndicators = () => {
       stackList
@@ -271,6 +293,7 @@ export function initControlsUI(engine) {
       });
 
       sync();
+      syncers.push(sync);
       wrap.appendChild(input);
       wrap.appendChild(valueEl);
       row.appendChild(labelEl);
@@ -306,9 +329,30 @@ export function initControlsUI(engine) {
         rebuildComposer();
       });
 
+      const sync = () => {
+        input.value = getValue();
+      };
+
+      sync();
+      syncers.push(sync);
+
       row.appendChild(labelEl);
       row.appendChild(input);
       parent.appendChild(row);
+    };
+
+    const addButtonToPass = (parent, { label, onClick }) => {
+      const button = document.createElement('button');
+      button.textContent = label;
+      const clickFn = async () => {
+        button.textContent = 'Processing...';
+        await onClick();
+        button.textContent = label;
+      }
+      button.addEventListener('click', async () => {
+        await clickFn();
+      });
+      parent.appendChild(button);
     };
 
     const addToneMappingControl = parent => {
@@ -348,6 +392,13 @@ export function initControlsUI(engine) {
         renderer.toneMapping = engine.fx.toneMapping.method;
         rebuildComposer();
       });
+
+      const sync = () => {
+        select.value = `${engine.fx.toneMapping.method}`;
+      };
+
+      sync();
+      syncers.push(sync);
 
       row.appendChild(labelEl);
       row.appendChild(select);
@@ -423,9 +474,27 @@ export function initControlsUI(engine) {
           setValue: value => { renderer.toneMappingExposure = value; },
         });
       }
+
+      if (passId === 'glitchPass') {
+        addRangeControl(parent, {
+          label: 'Trigger Threshold', min: 0, max: 1, step: 0.001,
+          getValue: () => engine.fx.getGlitchThreshold(),
+          setValue: value => { engine.fx.setGlitchThreshold(value); },
+        });
+        addButtonToPass(parent, {
+          label: 'Reset Glitch Trigger',
+          onClick: async () => {
+            if (engine.fx.glitchPass) {
+              const thresh = await engine.fx.normalizeGlitchThreshold();
+              refresh();
+            }
+          },
+        });
+      }
     };
 
     const renderStack = () => {
+      syncers.length = 0;
       stackList.innerHTML = '';
       const orderedLayers = engine.fx.getPassOrder();
 
@@ -595,7 +664,20 @@ export function initControlsUI(engine) {
     Object.assign(closeRow.style, {
       display: 'flex',
       justifyContent: 'flex-end',
+      gap: '8px',
       marginTop: '6px',
+    });
+
+    const randomizeEffectsButton = document.createElement('button');
+    randomizeEffectsButton.type = 'button';
+    randomizeEffectsButton.textContent = 'Randomize Effects';
+    Object.assign(randomizeEffectsButton.style, {
+      border: '1px solid rgba(255,255,255,0.25)',
+      borderRadius: '6px',
+      background: 'rgba(255,255,255,0.1)',
+      color: '#fff',
+      padding: '6px 10px',
+      cursor: 'pointer',
     });
 
     const closeButton = document.createElement('button');
@@ -611,6 +693,7 @@ export function initControlsUI(engine) {
     });
 
     const refresh = () => {
+      syncers.forEach(sync => sync());
       renderStack();
     };
 
@@ -620,12 +703,12 @@ export function initControlsUI(engine) {
     };
 
     const positionDock = () => {
-      const rect = renderer.domElement.getBoundingClientRect();
+      const rect = safeGetRendererRect();
       const gutter = 12;
       const viewportMargin = 8;
 
       if (showUiInViewport) {
-        const panelWidth = Math.max(220, Math.min(300, Math.floor(rect.width * 0.28)));
+        const panelWidth = Math.max(320, Math.min(320, Math.floor(rect.width * 0.28)));
         const maxHeight = Math.max(200, Math.floor(rect.height - viewportMargin * 2));
         const left = Math.max(viewportMargin, rect.right - panelWidth - viewportMargin);
         const top = Math.max(viewportMargin, rect.top + viewportMargin);
@@ -637,8 +720,8 @@ export function initControlsUI(engine) {
         return;
       }
 
-      let panelWidth = Math.min(380, Math.max(280, Math.floor(window.innerWidth * 0.32)));
-      const maxAllowed = Math.max(240, window.innerWidth - viewportMargin * 2);
+      let panelWidth = Math.min(320, Math.max(280, Math.floor(window.innerWidth * 0.32)));
+      const maxAllowed = Math.max(320, window.innerWidth - viewportMargin * 2);
       panelWidth = Math.min(panelWidth, maxAllowed);
       panel.style.width = `${panelWidth}px`;
 
@@ -650,7 +733,7 @@ export function initControlsUI(engine) {
       if (rightSpace < panelWidth && leftSpace >= panelWidth) {
         left = rect.left - panelWidth - gutter;
       } else if (rightSpace < panelWidth && leftSpace < panelWidth) {
-        panelWidth = Math.max(240, Math.min(window.innerWidth - viewportMargin * 2, panelWidth));
+        panelWidth = Math.max(320, Math.min(window.innerWidth - viewportMargin * 2, panelWidth));
         panel.style.width = `${panelWidth}px`;
         left = Math.max(
           viewportMargin,
@@ -679,9 +762,14 @@ export function initControlsUI(engine) {
     };
 
     closeButton.addEventListener('click', close);
+    randomizeEffectsButton.addEventListener('click', () => {
+      engine.randomizeEffects();
+      refresh();
+    });
     window.addEventListener('resize', handleViewportLayoutChange, { signal: controller.signal });
     window.addEventListener('scroll', handleViewportLayoutChange, { capture: true, signal: controller.signal });
 
+    closeRow.appendChild(randomizeEffectsButton);
     closeRow.appendChild(closeButton);
     panel.appendChild(title);
     panel.appendChild(hint);
@@ -926,7 +1014,7 @@ export function initControlsUI(engine) {
       getValue: () => Number.parseInt(`${visualizer.skyboxPreset}`, 10) || embeddedSkyboxIds[0] || 0,
       setValue: value => {
         visualizer.skyboxPreset = value;
-        engine._loadSkybox({ type: 'preset', presetId: Number.parseInt(`${value}`, 10) || 0 });
+        engine.loadSkybox({ type: 'preset', presetId: Number.parseInt(`${value}`, 10) || 0 });
       },
     });
 
@@ -963,12 +1051,12 @@ export function initControlsUI(engine) {
     const close = () => { overlay.style.display = 'none'; };
 
     const positionDock = () => {
-      const rect = renderer.domElement.getBoundingClientRect();
+      const rect = safeGetRendererRect();
       const gutter = 12;
       const viewportMargin = 8;
 
       if (showUiInViewport) {
-        panel.style.width = '280px';
+        panel.style.width = '320px';
         const left = Math.max(viewportMargin, rect.left + viewportMargin);
         const top = Math.max(viewportMargin, rect.top + viewportMargin);
         overlay.style.left = `${Math.round(left)}px`;
@@ -977,8 +1065,8 @@ export function initControlsUI(engine) {
         return;
       }
 
-      let panelWidth = Math.min(360, Math.max(280, Math.floor(window.innerWidth * 0.28)));
-      panelWidth = Math.min(panelWidth, Math.max(240, window.innerWidth - viewportMargin * 2));
+      let panelWidth = Math.min(320, Math.max(280, Math.floor(window.innerWidth * 0.28)));
+      panelWidth = Math.min(panelWidth, Math.max(320, window.innerWidth - viewportMargin * 2));
       panel.style.width = `${panelWidth}px`;
 
       const leftSpace = rect.left - gutter;
@@ -995,7 +1083,7 @@ export function initControlsUI(engine) {
     };
 
     const handleViewportLayoutChange = () => {
-      if (overlay.style.display !== 'none') positionDock();
+      // if (overlay.style.display !== 'none') positionDock();
     };
 
     const open = () => {
@@ -1068,6 +1156,36 @@ export function initControlsUI(engine) {
         switchControls();
       }
       open = !open;
+    }
+    ,
+    // Refresh UI controls to reflect current engine state (use after loadPreset)
+    refresh: () => {
+      try {
+        fxStudioOverlay?.refresh();
+      } catch (e) {
+        // ignore
+      }
+      try {
+        sceneCameraDock?.refresh();
+      } catch (e) {
+        // ignore
+      }
+      try {
+        rebuildComposer();
+      } catch (e) {
+        // ignore
+      }
+    },
+    // Handler called by engine when a preset is loaded
+    onPresetLoaded: preset => {
+      // ensure UI elements reflect new preset values
+      try {
+        fxStudioOverlay?.refresh();
+      } catch (e) {}
+      try {
+        sceneCameraDock?.refresh();
+      } catch (e) {}
+      try { rebuildComposer(); } catch (e) {}
     }
   };
 }
