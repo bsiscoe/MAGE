@@ -98,5 +98,52 @@ export function normalizeAudioFeatures(freqData, previousEnergy = 0) {
   };
 }
 
+export function hashSeedString(seed) {
+  return xmur3(seed)();
+  // Return a stable 32-bit unsigned integer seed for deterministic generators.
+  return hashFactory();
+}
+
+export function normalizeSeed(seed) {
+  if (seed === undefined || seed === null) {
+    return hashSeedString('mage-default-seed');
+  }
+  if (typeof seed === 'string') {
+    return hashSeedString(seed);
+  }
+  if (typeof seed === 'number' && Number.isFinite(seed)) {
+    // Ensure numeric seeds are whole numbers and unsigned 32-bit.
+    return Math.trunc(seed) >>> 0;
+  }
+  // Fallback: coerce other types to string and hash to an integer seed.
+  return hashSeedString(String(seed));
+}
+
+export function xmur3(seedText) {
+  // Ensure seedText is a string so callers may pass numbers or other types
+  seedText = String(seedText);
+  let hash = 1779033703 ^ seedText.length;
+  for (let i = 0; i < seedText.length; i += 1) {
+    hash = Math.imul(hash ^ seedText.charCodeAt(i), 3432918353);
+    hash = (hash << 13) | (hash >>> 19);
+  }
+  return function nextHash() {
+    hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+    hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+    hash ^= hash >>> 16;
+    return hash >>> 0;
+  };
+}
+
+export function mulberry32(seedInt) {
+  let state = seedInt >>> 0;
+  return function nextFloat() {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // Export input bridge adapters (helps postbuild JSDoc/type extraction)
 export { createDomInputSource, createReactPointerHandlers } from './inputBridgeAdapter.js';

@@ -1,3 +1,4 @@
+import { hashSeedString, normalizeSeed, xmur3, mulberry32 } from "./helpers.js";
 
 const SHADERPARK_WHITELIST_SPEC = Object.freeze({
   Geometry: Object.freeze([
@@ -188,37 +189,6 @@ function clampInt(value, min, max) {
   return Math.trunc(clampRange(value, min, max));
 }
 
-function normalizeSeed(seed) {
-  if (seed === undefined || seed === null) {
-    return 'mage-default-seed';
-  }
-  return String(seed);
-}
-
-function xmur3(seedText) {
-  let hash = 1779033703 ^ seedText.length;
-  for (let i = 0; i < seedText.length; i += 1) {
-    hash = Math.imul(hash ^ seedText.charCodeAt(i), 3432918353);
-    hash = (hash << 13) | (hash >>> 19);
-  }
-  return function nextHash() {
-    hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
-    hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
-    hash ^= hash >>> 16;
-    return hash >>> 0;
-  };
-}
-
-function mulberry32(seedInt) {
-  let state = seedInt >>> 0;
-  return function nextFloat() {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function createSeededRng(seed) {
   const hashFactory = xmur3(normalizeSeed(seed));
   const prng = mulberry32(hashFactory());
@@ -352,6 +322,75 @@ function pickFamily(rng) {
   return rng.pick(SHADER_FAMILIES);
 }
 
+function buildAudioProfile(family, rng, complexity) {
+  // Family-aware audio coefficients for semantic layer modulation
+  // Each family has different visual characteristics and responds uniquely to audio
+  const profiles = {
+    GRID: {
+      // Grids respond strongly to treble (detail/thinness) and mid (pattern flow)
+      bassScale: rng.float(0.3, 0.45),
+      midWobble: rng.float(0.6, 1.0),
+      midRotation: rng.float(0.3, 0.5),
+      trebleExpand: rng.float(1.2, 1.6),
+      treblePulse: rng.float(0.9, 1.3),
+      energyMetal: rng.float(0.5, 0.7),
+      energyShine: rng.float(0.3, 0.5),
+      spectralHue: rng.float(0.25, 0.35),
+      spectralContrast: rng.float(0.6, 0.8),
+    },
+    BLOB: {
+      // Blobs respond strongly to treble (expand/pulse) and energy (intensity)
+      bassScale: rng.float(0.3, 0.45),
+      midWobble: rng.float(0.6, 0.9),
+      midRotation: rng.float(0.3, 0.45),
+      trebleExpand: rng.float(1.3, 1.8),
+      treblePulse: rng.float(1.0, 1.4),
+      energyMetal: rng.float(0.6, 0.8),
+      energyShine: rng.float(0.4, 0.6),
+      spectralHue: rng.float(0.28, 0.38),
+      spectralContrast: rng.float(0.65, 0.85),
+    },
+    HELIX: {
+      // Helix responds strongly to mid (rotational flow) and treble (ring definition)
+      bassScale: rng.float(0.3, 0.45),
+      midWobble: rng.float(0.9, 1.3),
+      midRotation: rng.float(0.5, 0.8),
+      trebleExpand: rng.float(1.0, 1.5),
+      treblePulse: rng.float(0.8, 1.2),
+      energyMetal: rng.float(0.55, 0.75),
+      energyShine: rng.float(0.35, 0.55),
+      spectralHue: rng.float(0.28, 0.36),
+      spectralContrast: rng.float(0.65, 0.85),
+    },
+    ORB: {
+      // Orbs are balanced across all audio layers
+      bassScale: rng.float(0.35, 0.5),
+      midWobble: rng.float(0.7, 1.0),
+      midRotation: rng.float(0.4, 0.6),
+      trebleExpand: rng.float(1.0, 1.4),
+      treblePulse: rng.float(0.8, 1.2),
+      energyMetal: rng.float(0.55, 0.75),
+      energyShine: rng.float(0.35, 0.55),
+      spectralHue: rng.float(0.28, 0.36),
+      spectralContrast: rng.float(0.65, 0.85),
+    },
+    HYBRID: {
+      // Hybrid balances with slight emphasis on energy and bass
+      bassScale: rng.float(0.35, 0.5),
+      midWobble: rng.float(0.7, 1.0),
+      midRotation: rng.float(0.4, 0.6),
+      trebleExpand: rng.float(1.0, 1.4),
+      treblePulse: rng.float(0.8, 1.2),
+      energyMetal: rng.float(0.6, 0.8),
+      energyShine: rng.float(0.4, 0.6),
+      spectralHue: rng.float(0.3, 0.38),
+      spectralContrast: rng.float(0.7, 0.85),
+    },
+  };
+  
+  return profiles[family] || profiles.ORB; // Default to ORB if family unknown
+}
+
 function buildGlobalSettings(rng, complexity) {
   const geometryQuality = clampInt(Math.round(20 + complexity * 40 + rng.float(-2, 3)), 16, 80);
   const stepSize = clampRange(0.85 - complexity * 0.32 + rng.float(-0.05, 0.04), 0.35, 0.9);
@@ -442,10 +481,17 @@ function buildConstructionParams(rng, complexity, signatureLayer = null) {
   const layeringDepth = styleStruct
     ? signatureLayer.nodeCount
     : clampInt(Math.round(2 + complexity * 5 + rng.float(-1, 1)), 2, 8);
+  
+  // Wider blend amplitude range for more visual diversity matching presets (0.08-0.28)
+  const blendBaseRange = styleStruct 
+    ? [styleStruct.blendBase, styleStruct.blendBase]
+    : [0.08, 0.28];
+  const blendBase = rng.float(blendBaseRange[0], blendBaseRange[1]);
+  
   return {
     layeringDepth,
-    blendBase: styleStruct ? styleStruct.blendBase : rng.float(0.08, 0.22),
-    blendWaveAmp: styleStruct ? styleStruct.blendWaveAmp : rng.float(0.03, 0.2) * (0.4 + complexity),
+    blendBase,
+    blendWaveAmp: styleStruct ? styleStruct.blendWaveAmp : rng.float(0.05, 0.25) * (0.4 + complexity),
     blendFreq: rng.float(0.3, 1.8),
     indexPhase: rng.float(0.2, 1.2),
   };
@@ -479,21 +525,21 @@ function createFamilySchema(family, rng, complexity, constructionParams) {
   if (family === 'ORB') {
     const nodes = [
       createNode(rng, 'sphere', complexity, {
-        scale: rng.float(0.8, 1.25),
-        minSize: rng.float(0.14, 0.26),
-        expandAmp: rng.float(0.0001, 0.03) * complexity,
+        scale: rng.float(0.7, 1.35),  // Expanded from 0.8-1.25 for more diversity
+        minSize: rng.float(0.12, 0.28),  // Expanded from 0.14-0.26
+        expandAmp: rng.float(0.0001, 0.04) * complexity,  // Slightly increased
       }),
       createNode(rng, 'torus', complexity, {
-        scale: rng.float(0.62, 0.95),
-        minSize: rng.float(0.1, 0.2),
-        thicknessScale: rng.float(0.15, 0.28),
+        scale: rng.float(0.55, 1.05),  // Expanded from 0.62-0.95 for wider range
+        minSize: rng.float(0.08, 0.24),  // Expanded from 0.1-0.2
+        thicknessScale: rng.float(0.12, 0.3),  // Expanded from 0.15-0.28 for more variation
       }),
     ];
     return {
       geometry: { nodes },
       constraints: {
         nodeCount: { min: 2, max: 2 },
-        minSize: { min: 0.1, max: 2.2 },
+        minSize: { min: 0.08, max: 2.4 },  // Increased from 2.2
       },
     };
   }
@@ -530,12 +576,12 @@ function createFamilySchema(family, rng, complexity, constructionParams) {
       createNode(rng, 'grid', complexity, {
         scale: rng.float(0.52, 1.18),
         minSize: rng.float(0.18, 0.36),
-        gridCount: rng.int(3, 9),
-        thicknessScale: rng.float(0.04, 0.14),
+        gridCount: rng.int(3, 8),  // Expanded from 3-9 for more varied preset alignment
+        thicknessScale: rng.float(0.04, 0.16),  // Slightly increased for more detail
       }),
       createNode(rng, 'cylinder', complexity, {
-        scale: rng.float(0.2, 0.62),
-        heightScale: rng.float(1.2, 2.2),
+        scale: rng.float(0.2, 0.68),  // Expanded from 0.2-0.62
+        heightScale: rng.float(1.1, 2.4),  // Expanded for more variation
       }),
     ];
     return {
@@ -550,25 +596,25 @@ function createFamilySchema(family, rng, complexity, constructionParams) {
   if (family === 'HELIX') {
     const nodes = [
       createNode(rng, 'torus', complexity, {
-        scale: rng.float(0.48, 0.9),
-        thicknessScale: rng.float(0.1, 0.2),
+        scale: rng.float(0.4, 1.1),  // Expanded from 0.48-0.9 for more diversity
+        thicknessScale: rng.float(0.08, 0.22),  // Expanded from 0.1-0.2
       }),
       createNode(rng, 'torus', complexity, {
-        scale: rng.float(0.52, 0.96),
-        thicknessScale: rng.float(0.1, 0.2),
+        scale: rng.float(0.45, 1.15),  // Expanded from 0.52-0.96
+        thicknessScale: rng.float(0.08, 0.22),  // Expanded for variation
         rotate: [rng.float(0.6, 1.8), rng.float(0.6, 1.8), rng.float(0.6, 1.8)],
       }),
       createNode(rng, 'cylinder', complexity, {
-        scale: rng.float(0.12, 0.28),
-        heightScale: rng.float(1.6, 2.8),
-        thicknessScale: rng.float(0.18, 0.26),
+        scale: rng.float(0.15, 0.4),  // Expanded from 0.12-0.28
+        heightScale: rng.float(1.4, 3.0),  // Expanded from 1.6-2.8 for more variation
+        thicknessScale: rng.float(0.16, 0.28),  // Expanded for detail range
       }),
     ];
     return {
       geometry: { nodes },
       constraints: {
         nodeCount: { min: 3, max: 3 },
-        minSize: { min: 0.08, max: 2.1 },
+        minSize: { min: 0.08, max: 2.3 },  // Increased max for larger potential
       },
     };
   }
@@ -576,21 +622,23 @@ function createFamilySchema(family, rng, complexity, constructionParams) {
   if (family === 'HYBRID') {
     const nodes = [
       createNode(rng, 'sphere', complexity, {
-        scale: rng.float(0.62, 1.05),
+        scale: rng.float(0.58, 1.15),  // Expanded from 0.62-1.05 for more diversity
+        minSize: rng.float(0.1, 0.24),  // Expanded
       }),
       createNode(rng, 'grid', complexity, {
-        scale: rng.float(0.46, 0.98),
+        scale: rng.float(0.42, 1.05),  // Expanded from 0.46-0.98
         gridCount: rng.int(3, 8),
       }),
       createNode(rng, 'torus', complexity, {
-        scale: rng.float(0.34, 0.72),
+        scale: rng.float(0.3, 0.8),  // Expanded from 0.34-0.72 for wider range
+        thicknessScale: rng.float(0.1, 0.24),  // Added range for variation
       }),
     ];
     return {
       geometry: { nodes },
       constraints: {
         nodeCount: { min: 3, max: 3 },
-        minSize: { min: 0.1, max: 2.3 },
+        minSize: { min: 0.08, max: 2.5 },  // Increased from 2.3
       },
     };
   }
@@ -628,6 +676,7 @@ function createParameterGraph(seed, complexity = 0.58, forcedFamily = null, forc
   const construction = buildConstructionParams(rng, boundedComplexity, signatureLayer);
   const familySchema = createFamilySchema(family, rng, boundedComplexity, construction);
   applySignatureToGeometry(signatureLayer, familySchema.geometry, rng);
+  const audioProfile = buildAudioProfile(family, rng, boundedComplexity);
 
   return {
     seed: normalizeSeed(seed),
@@ -642,6 +691,7 @@ function createParameterGraph(seed, complexity = 0.58, forcedFamily = null, forc
     construction,
     geometry: familySchema.geometry,
     constraints: familySchema.constraints,
+    audioProfile,
     blockSpec: CODEGEN_BLOCK_SPEC,
   };
 }
@@ -660,15 +710,18 @@ function buildConstructionBlock(ir, nodeIndex) {
 
 function buildTransformBlock(ir, node, nodeIndex) {
   const t = ir.transforms;
+  const a = ir.audioProfile;
   const phase = formatFloat(node.phase + t.phase);
   const wobble = formatFloat(node.wobble * 0.5);
   
-  // Mid modulates wobble frequency (meso layer: structural motion)
-  const wobbleFreqModulated = `(${formatFloat(node.wobbleFreq)} * (0.6 + mid * 1.0))`;
+  // Mid modulates wobble frequency (meso layer: structural motion) - family-aware
+  const midWobbleCoeff = formatFloat(a.midWobble);
+  const wobbleFreqModulated = `(${formatFloat(node.wobbleFreq)} * (0.6 + mid * ${midWobbleCoeff}))`;
   
-  // Mid also modulates rotation intensity (meso layer: rotational flow)
-  const rayYawModulated = `${formatFloat(t.rayYaw)} * (0.75 + mid * 0.5)`;
-  const rayPitchModulated = `${formatFloat(t.rayPitch)} * (0.75 + mid * 0.5)`;
+  // Mid also modulates rotation intensity (meso layer: rotational flow) - family-aware
+  const midRotationCoeff = formatFloat(a.midRotation);
+  const rayYawModulated = `${formatFloat(t.rayYaw)} * (0.75 + mid * ${midRotationCoeff})`;
+  const rayPitchModulated = `${formatFloat(t.rayPitch)} * (0.75 + mid * ${midRotationCoeff})`;
   
   return {
     type: 'TransformBlock',
@@ -684,13 +737,16 @@ function buildTransformBlock(ir, node, nodeIndex) {
   };
 }
 
-function buildSurfaceBlock(node, spaceVar) {
+function buildSurfaceBlock(ir, node, spaceVar) {
   const operations = [];
   const expandTerms = [];
+  const a = ir.audioProfile;
   
-  // Treble modulates expand amplitude (micro layer: detail and sparkle)
-  const expandAmpModulated = `${formatFloat(node.expandAmp)} * (0.45 + treble * 1.2)`;
-  const pulseAmpModulated = `${formatFloat(node.pulseAmp)} * (0.5 + treble * 1.0)`;
+  // Treble modulates expand amplitude (micro layer: detail and sparkle) - family-aware
+  const trebleExpandCoeff = formatFloat(a.trebleExpand);
+  const treblePulseCoeff = formatFloat(a.treblePulse);
+  const expandAmpModulated = `${formatFloat(node.expandAmp)} * (0.45 + treble * ${trebleExpandCoeff})`;
+  const pulseAmpModulated = `${formatFloat(node.pulseAmp)} * (0.5 + treble * ${treblePulseCoeff})`;
   
   if (node.expandAmp > 0.0001) {
     expandTerms.push(`noise(${spaceVar} * ${formatFloat(node.noiseFreq)}) * ${expandAmpModulated}`);
@@ -713,31 +769,43 @@ function buildSurfaceBlock(node, spaceVar) {
 
 function buildMaterialBlock(ir, nodeIndex) {
   const m = ir.material;
+  const a = ir.audioProfile;
   const layerPhase = formatFloat(nodeIndex * m.layerShift);
-  const centroidShift = `(spectralCentroid - 0.5) * 0.32`;
-  const centroidContrast = `0.85 + abs(spectralCentroid - 0.5) * 0.7`;
+  
+  // Family-aware spectral modulation
+  const spectralHueCoeff = formatFloat(a.spectralHue);
+  const spectralContrastCoeff = formatFloat(a.spectralContrast);
+  const centroidShift = `(spectralCentroid - 0.5) * ${spectralHueCoeff}`;
+  const centroidContrast = `0.85 + abs(spectralCentroid - 0.5) * ${spectralContrastCoeff}`;
+  
   const cR = `min(1.0, max(0.0, (${formatFloat(m.baseColor[0])} + ${centroidShift}) * ${centroidContrast} + rayDir.x * ${formatFloat(0.22 + m.mouseMix)} + sin(t * ${formatFloat(m.waveFreq[0])} + ${layerPhase}) * ${formatFloat(m.waveAmp[0])}))`;
   const cG = `min(1.0, max(0.0, (${formatFloat(m.baseColor[1])} + (spectralCentroid - 0.5) * 0.05) * ${centroidContrast} + rayDir.y * ${formatFloat(0.22 + m.mouseMix)} + cos(t * ${formatFloat(m.waveFreq[1])} + ${layerPhase}) * ${formatFloat(m.waveAmp[1])}))`;
   const cB = `min(1.0, max(0.0, (${formatFloat(m.baseColor[2])} - ${centroidShift}) * ${centroidContrast} + rayDir.z * ${formatFloat(0.22 + m.mouseMix)} + nsin(t * ${formatFloat(m.waveFreq[2])} + ${layerPhase}) * ${formatFloat(m.waveAmp[2])}))`;
 
+  // Family-aware energy modulation
+  const energyMetalCoeff = formatFloat(a.energyMetal);
+  const energyShineCoeff = formatFloat(a.energyShine);
+  
   return {
     type: 'MaterialBlock',
     operations: [
       `color(${cR}, ${cG}, ${cB});`,
-      `metal(max(0.0, min(1.0, ${formatFloat(m.metal)} * (0.7 + energy * 0.6) + pointerDown * 0.12)));`,
-      `shine(max(0.0, min(1.0, ${formatFloat(m.shine)} * (0.8 + energy * 0.4) + size * 0.05)));`,
+      `metal(max(0.0, min(1.0, ${formatFloat(m.metal)} * (0.7 + energy * ${energyMetalCoeff}) + pointerDown * 0.12)));`,
+      `shine(max(0.0, min(1.0, ${formatFloat(m.shine)} * (0.8 + energy * ${energyShineCoeff}) + size * 0.05)));`,
     ],
   };
 }
 
-function makeSizeExpr(node) {
-  // Bass modulates geometry scale (macro layer: large deformation)
-  const bassScale = `(0.8 + bass * 0.4)`;
+function makeSizeExpr(ir, node) {
+  const a = ir.audioProfile;
+  // Bass modulates geometry scale (macro layer: large deformation) - family-aware
+  const bassScaleCoeff = formatFloat(a.bassScale);
+  const bassScale = `(0.8 + bass * ${bassScaleCoeff})`;
   return `max(${formatFloat(node.minSize)}, baseSize * ${formatFloat(node.scale)} * ${bassScale} + pointerDown * ${formatFloat(node.pointerGain)} + sin(t * ${formatFloat(node.wobbleFreq)} + ${formatFloat(node.phase)}) * ${formatFloat(node.wobble)})`;
 }
 
-function buildGeometryBlock(node) {
-  const sizeExpr = makeSizeExpr(node);
+function buildGeometryBlock(ir, node) {
+  const sizeExpr = makeSizeExpr(ir, node);
   let operation = `sphere(${sizeExpr});`;
 
   if (node.kind === 'torus') {
@@ -792,9 +860,9 @@ function emitShaderFromIR(ir) {
   ir.geometry.nodes.forEach((node, index) => {
     const constructionBlock = buildConstructionBlock(ir, index);
     const transformBlock = buildTransformBlock(ir, node, index);
-    const surfaceBlock = buildSurfaceBlock(node, 's');
+    const surfaceBlock = buildSurfaceBlock(ir, node, 's');
     const materialBlock = buildMaterialBlock(ir, index);
-    const geometryBlock = buildGeometryBlock(node);
+    const geometryBlock = buildGeometryBlock(ir, node);
 
     lines.push(...constructionBlock.operations);
     lines.push(...transformBlock.operations);
@@ -807,12 +875,38 @@ function emitShaderFromIR(ir) {
 }
 
 export function generateShader(seed, options = {}) {
+  if (seed === 'default') {
+      return { code: `
+            let size = input()
+        let pointerDown = input()
+        time = .3*time
+      size *= 1.3
+        rotateY(mouse.x * -2 * PI / 2 * (1+nsin(time)))
+        rotateX(mouse.y * 2 * PI / 2 * (1+nsin(time)))
+        metal(.5*size)
+        let rayDir = normalize(getRayDirection())
+        let clampedColor = vec3(rayDir.x+.2, rayDir.y+.25, rayDir.z+.2)
+        color(clampedColor)
+
+        rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
+      rotateX(cos((getRayDirection().x*16*nsin(time)+size)))
+      rotateZ(ncos((getRayDirection().z*4*cos(time)+size)))
+        boxFrame(vec3(size), size*.1)
+        shine(0.8*size)
+        blend(nsin(time*(size))*0.1+0.1)
+        sphere(size/2-pointerDown*.3)
+        blend(ncos((time*(size)))*0.1+0.1)
+        boxFrame(vec3(size-.075*pointerDown), size)
+      `,
+      seed:'default' };
+    }
+
   const complexity = options.complexity === undefined ? 0.58 : options.complexity;
   const family = options.family || null;
   const signature = options.signature || null;
   const params = createParameterGraph(seed, complexity, family, signature);
   const code = emitShaderFromIR(params);
-  return { code, params };
+  return { code, params, seed: params.seed };
 }
 
 const LEGACY_PROFILE_MAP = Object.freeze({
@@ -820,54 +914,188 @@ const LEGACY_PROFILE_MAP = Object.freeze({
   // 'default.bak': { seed: 'mage-default-bak', complexity: 0.52, family: 'ORB' },
   // dev: { seed: 'mage-dev', complexity: 0.68, family: 'HELIX' },
   // og: { seed: 'mage-og', complexity: 0.62, family: 'BLOB' },
-  'generator_v1.5': { seed: 'mage-generator-v1-5', complexity: 0.5, family: 'ORB' },
-  'generator_v1.5_extreme': { seed: 'mage-generator-v1-5', complexity: 1.0, family: 'COMPLEX' },
-  'generator_v1.5_light': { seed: 'mage-generator-v1-5', complexity: 0.1 },
+  'generator_v1.1': { seed: normalizeSeed('mage-generator-v1-5'), complexity: 0.5 },
+  'generator_v1.1_extreme': { seed: normalizeSeed('mage-generator-v1-5'), complexity: 1.0, family: 'COMPLEX' },
+  'generator_v1.1_light': { seed: normalizeSeed('mage-generator-v1-5'), complexity: 0.1, family: 'HYBRID' },
 });
 
-export function generateshaderparkcode(visualizer = null, shader = 'generator_v1.5') {
-  const key = typeof shader === 'string' ? shader : 'generator_v1.5';
+/**
+ * Generates a new random shader using a profile-based approach.
+ * This function generates NEW random shaders, so the returned seed will vary each time,
+ * even if visualizer is the same (due to randomSeedOffset).
+ * 
+ * For deterministic shader generation with a specific seed, use shaderParkGenerator() instead.
+ * 
+ * @param {Object|null} visualizer - Optional visualizer object with a seed property
+ * @param {string} generator - Generator profile key (e.g., 'generator_v1.1')
+ * @returns {{shader: string, seed: number}} Generated shader code and its computed seed
+ */
+export function generateshaderparkcode(visualizer = null, generator = 'generator_v1.1') {
+  const key = typeof generator === 'string' ? generator : 'generator_v1.1';
 
-  if (key === 'default') {
-    return `
-          let size = input()
-      let pointerDown = input()
-      time = .3*time
-	  size *= 1.3
-      rotateY(mouse.x * -2 * PI / 2 * (1+nsin(time)))
-      rotateX(mouse.y * 2 * PI / 2 * (1+nsin(time)))
-      metal(.5*size)
-      let rayDir = normalize(getRayDirection())
-      let clampedColor = vec3(rayDir.x+.2, rayDir.y+.25, rayDir.z+.2)
-      color(clampedColor)
+  // Random offset added to generated seeds to ensure uniqueness when generating new shaders
+  // (not used when a seed is explicitly provided via shaderParkGenerator)
+  const randomSeedOffset = Math.random() * 10000;
 
-      rotateY(sin(getRayDirection().y*8*(ncos(sin(time)))+size))
-	  rotateX(cos((getRayDirection().x*16*nsin(time)+size)))
-	  rotateZ(ncos((getRayDirection().z*4*cos(time)+size)))
-      boxFrame(vec3(size), size*.1)
-      shine(0.8*size)
-      blend(nsin(time*(size))*0.1+0.1)
-      sphere(size/2-pointerDown*.3)
-      blend(ncos((time*(size)))*0.1+0.1)
-      boxFrame(vec3(size-.075*pointerDown), size)
-    `.toString().trim();
-  }
   const profile = LEGACY_PROFILE_MAP[key] || {
     seed: `mage-${normalizeSeed(key)}`,
     complexity: 0.58,
     family: null,
   };
 
-  if (visualizer && typeof visualizer.seed === 'number') {
-    visualizer.seed += 1; // Add random offset to avoid collisions with legacy seeds
+  if (generator == 'generator_v1.0') {
+      // Define parameters and randomization logic
+      const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
+      const numShapes = Math.floor(Math.random() * 4) + 2;  // Random number of shapes between 2 and 5
+      let shapes = [];
+    
+      // Randomly decide how many shapes and which shapes to include
+      for (let i = 0; i < numShapes; i++) {
+        const shapeChoice = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+        const sizeFactor = Math.random() * 0.5 + 0.5; // Random size factor for variability
+        shapes.push({ shape: shapeChoice, sizeFactor });
+      }
+    
+      // Color choices
+      const colorChoices = [
+        `color(${Math.random() * 0.5}, ${Math.random() * 0.5}, ${Math.random() * 0.5});`, // Dark color
+        `color(${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5}, 0);`, // Warm colors
+        `color(${Math.random() * 0.5}, ${Math.random() * 0.5 + 0.5}, ${Math.random() * 0.5});`, // Cool colors
+      ];
+      const chosenColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+    
+      const randomRotateFactor = Math.random() * 2 + 1;
+      const randomMetal = Math.random() * 0.5 + 0.3;
+      const randomShine = Math.random() * 0.5 + 0.3;
+      const randomBlend = Math.random() * 0.2 + 0.1;
+    
+      // Randomly vary the grid count and size for more flexibility
+      const gridCount = Math.floor(Math.random() * 2) + 1; // Random count between 1 and 2
+    
+      const extraShapeChoice = Math.random();
+      let extraShape;
+      if (extraShapeChoice < 0.33) {
+        extraShape = 'sphere(size / 3);';
+      } else if (extraShapeChoice < 0.66) {
+        extraShape = 'boxFrame(vec3(size * 0.7), size * 0.05);';
+      } else {
+        extraShape = `grid(${gridCount}, size * 4, max(0.001, size * 0.003));`;  // Larger grid with controlled rod thickness
+      }
+    
+      // Randomize setMaxIterations and setStepSize for raymarching
+      const maxIterations = Math.floor(Math.random() * 200); // Random iterations between 5000 and 15000
+      const stepSize = Math.random() * 0.9; // Random step size between 0.01 and 0.05
+    
+      // Generate ShaderPark code string deterministically
+      const shaderCode = `
+        setMaxIterations(${maxIterations});
+        setStepSize(${stepSize});
+        
+        let size = input();
+        let pointerDown = input();
+        time *= .1;
+        rotateY(mouse.x * -5 * PI / 2 + time - (pointerDown + 0.1));
+        rotateX(mouse.y * 5 * PI / 2 + time);
+    
+        // Set color
+        ${chosenColor}
+    
+        // Add rotations
+        rotateX(getRayDirection().y * ${randomRotateFactor} + time);
+        rotateY(getRayDirection().x * ${randomRotateFactor} + time);
+        rotateZ(getRayDirection().z * ${randomRotateFactor} + time);
+    
+        // Apply metal and shine
+        metal(${randomMetal} * size);
+        shine(${randomShine});
+    
+        // Render the shapes
+        ${shapes.map(({ shape, sizeFactor }) => {
+          const adjustedSize = `size * ${sizeFactor} - pointerDown * 0.05`; // Adjust size dynamically
+    
+          switch (shape) {
+            case 'sphere':
+              return `sphere(${adjustedSize} / 2);`;
+            case 'boxFrame':
+              return `boxFrame(vec3(${adjustedSize}), ${adjustedSize} * 0.1);`;
+            case 'torus':
+              return `torus(${adjustedSize}, ${adjustedSize} / 4);`;
+            case 'cylinder':
+              return `cylinder(${adjustedSize} / 4, ${adjustedSize});`;
+            case 'grid':
+              return `grid(${Math.floor(Math.random() * 3) + 3}, ${adjustedSize} / 3, 0.01 * ${adjustedSize});`;
+            default:
+              return '';
+          }
+        }).join('\n')}
+    
+        // Apply blending
+        blend(nsin(time * size) * ${randomBlend});
+    
+        // Extra shape
+        ${extraShape}
+      `;
+      
+        return {
+          code: shaderCode,
+          seed: normalizeSeed('generator_v1.0' + shaderCode),
+        };
+      }
+
+  // Compute seed for shader generation WITHOUT mutating the visualizer object.
+  // Combines profile seed with (optional) visualizer seed + randomness to ensure uniqueness.
+  // Note: When an explicit seed is passed to shaderParkGenerator(), this function is bypassed.
+  let computedVisualizerSeed;
+  if (visualizer && visualizer.seed !== undefined && visualizer.seed !== null) {
+    const normalized = typeof visualizer.seed === 'string' ? normalizeSeed(visualizer.seed) : visualizer.seed;
+    computedVisualizerSeed = normalized + randomSeedOffset;
   } else {
     console.warn(`generateshaderparkcode: No visualizer provided, using profile "${key}" with seed "${profile.seed}"`);
+    computedVisualizerSeed = randomSeedOffset;
   }
+  const seed = profile.seed + computedVisualizerSeed;
+  const genShader = generateShader(seed, {
+      complexity: profile.complexity,
+      family: profile.family,
+    });
 
-  return generateShader(profile.seed + (visualizer ? visualizer.seed : 0), {
-    complexity: profile.complexity,
-    family: profile.family,
-  }).code.toString().trim();
+  return {
+    shader: genShader.code.toString().trim(),
+    seed: genShader.seed,
+  }
+}
+
+/**
+ * Generates a shader code with a specific seed or delegates to profile-based generation.
+ * 
+ * CRITICAL: This function preserves the exact input seed for preset round-tripping.
+ * When seed is provided, it's returned unchanged (enabling save/load/export cycles).
+ * When seed is null, delegates to generateshaderparkcode() for random generation.
+ * 
+ * @param {Object} visualizer - Visualizer object (used only when seed is null)
+ * @param {string|number|null} seed - Exact seed to use for shader generation
+ * @param {string|null} generator - Generator profile (used only when seed is null)
+ * @returns {{shader: string, seed: string|number|null}} Generated shader code and seed
+ */
+export function shaderParkGenerator(visualizer, seed, generator = null) {
+  let finalShader = null;
+  let finalSeed = seed;
+  
+  if (seed != null) {
+    // Explicit seed provided: preserve it for deterministic reproduction and preset round-tripping.
+    // We generate the shader code but discard its internal seed to maintain the original seed value.
+    console.log(`shaderParkGenerator: Generating shader with seed "${seed}" and generator "${generator || 'generator_v1.1'}"`);
+    finalShader = generateShader(seed).code.toString().trim();
+    finalSeed = seed; // Preserve original input seed exactly
+    return {
+      shader: finalShader,
+      seed: finalSeed,
+    }
+  } else {
+    // No seed provided: delegate to generateshaderparkcode which generates new shaders with randomness
+    console.warn('shaderParkGenerator: No seed provided, using default shader code');
+    return generateshaderparkcode(visualizer, generator);
+  }
 }
 
 function extractFunctionCalls(code) {
@@ -957,8 +1185,7 @@ export function generateFamilySnapshots(seed, complexity = 0.62) {
 Example of a good legacy generator. This is the kind of code we want to be able to generate with the new system, 
 but it was written by hand before the new system existed. We can use this as a sanity check for the new generator, 
 and eventually aim to replicate its visual style and behavior with the new system.
-
-else if (shader == 'generator_v1.2') {
+console.log('Using legacy generator_v1.0 profile - consider updating to generator_v1.1 for improved visual diversity and preset alignment');
         const shapeChoices = ['sphere', 'boxFrame', 'torus', 'cylinder', 'grid'];
         const numShapes = Math.floor(Math.random() * 4) + 2; // Random number of shapes between 2 and 5
         let shapes = [];
@@ -1045,6 +1272,5 @@ else if (shader == 'generator_v1.2') {
       
           blend(nsin(time * size) * ${randomBlend()});
         `;
-      
-        return shaderCode;
+
 */
